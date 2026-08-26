@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Ambassador {
+  id         String  @id @default(cuid())
+  shop       String
+  customerId String
+  name       String
+  email      String
+  phone      String?
+
+  referralCode String @unique
+  status       String @default("ACTIVE")
+
+  totalReferrals Int   @default(0)
+  totalOrders    Int   @default(0)
+  totalEarnings  Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referrals   Referral[]
+  commissions Commission[]
+  payouts     Payout[]
+
+  @@unique([shop, customerId])
+  @@index([shop])
+  @@index([email])
+  @@index([referralCode])
+}
+
+model ReferralVisit {
+  id           String    @id @default(cuid())
+  shop         String
+  referralCode String
+  visitorId    String?
+  ipAddress    String?
+  userAgent    String?
+  customerId   String?
+  converted    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  convertedAt  DateTime?
+
+  @@index([shop])
+  @@index([referralCode])
+  @@index([visitorId])
+  @@index([customerId])
+}
+
+model Referral {
+  id   String @id @default(cuid())
+  shop String
+
+  ambassadorId String
+  ambassador   Ambassador @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+
+  referredCustomerId String
+  referredName       String?
+  referredEmail      String?
+
+  status String @default("ACTIVE")
+
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  credits     ReferralCredit[]
+  commissions Commission[]
+
+  @@unique([shop, referredCustomerId])
+  @@index([ambassadorId])
+  @@index([referredCustomerId])
+  @@index([shop])
+}
+
+model ReferralCredit {
+  id   String @id @default(cuid())
+  shop String
+
+  customerId String
+
+  referralId String
+  referral   Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+
+  amount Float
+  status String @default("AVAILABLE")
+
+  orderId String?
+
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+  expiresAt DateTime?
+
+  @@index([customerId])
+  @@index([referralId])
+  @@index([shop])
+  @@index([status])
+}
+
+model Commission {
+  id   String @id @default(cuid())
+  shop String
+
+  ambassadorId String
+  ambassador   Ambassador @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+
+  referralId String
+  referral   Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+
+  customerId String
+  orderId    String
+
+  orderAmount      Float
+  commissionRate   Float
+  commissionAmount Float
+
+  status String @default("PENDING")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shop, orderId])
+  @@index([ambassadorId])
+  @@index([referralId])
+  @@index([customerId])
+  @@index([shop])
+  @@index([status])
+}
+
+model Payout {
+  id   String @id @default(cuid())
+  shop String
+
+  ambassadorId String
+  ambassador   Ambassador @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+
+  amount Float
+
+  method         String?
+  accountDetails String?
+
+  status String @default("PENDING")
+
+  requestedAt DateTime  @default(now())
+  processedAt DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shop])
+  @@index([ambassadorId])
+  @@index([status])
+}
+
+model ReferralSettings {
+  id   String @id @default(cuid())
+  shop String @unique
+
+  enabled Boolean @default(true)
+
+  ambassadorEligibilityAmount Float @default(10000)
+
+  invitationValidityDays Int @default(30)
+
+  firstOrderCredit Float @default(200)
+
+  firstOrderCreditEnabled Boolean @default(true)
+
+  creditExpiryDays Int?
+
+  commissionRate Float @default(10)
+
+  referralAttribution String @default("FIRST_VALID")
+
+  commissionOnPaidOrders Boolean @default(true)
+
+  excludeCancelledOrders Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

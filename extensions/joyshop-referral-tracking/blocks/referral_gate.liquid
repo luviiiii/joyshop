@@ -1,0 +1,543 @@
+<script>
+(function () {
+
+  console.log("========================================");
+  console.log("JOYSHOP REFERRAL GATE");
+  console.log("Current URL:", window.location.href);
+
+
+  /*
+   * ==================================================
+   * 1. REFERRAL LINK COPY FUNCTIONALITY
+   * ==================================================
+   *
+   * Works independently of ?ref=
+   * so customers can copy their referral link
+   * from their dashboard.
+   */
+
+  function setupReferralCopy() {
+
+    const referralBoxes =
+      document.querySelectorAll(".referral-box");
+
+    if (!referralBoxes.length) {
+      return;
+    }
+
+    console.log(
+      "JOYSHOP: Found referral boxes:",
+      referralBoxes.length
+    );
+
+    referralBoxes.forEach(function (box) {
+
+      const button =
+        box.querySelector(
+          "button.referral-copy-btn"
+        ) ||
+        box.querySelector("button");
+
+      const input =
+        box.querySelector(
+          'input[type="text"]'
+        );
+
+      if (!button || !input) {
+        console.log(
+          "JOYSHOP: Referral copy elements not found."
+        );
+
+        return;
+      }
+
+      /*
+       * Prevent attaching the event multiple times.
+       */
+
+      if (
+        button.dataset.joyshopCopyReady === "true"
+      ) {
+        return;
+      }
+
+      button.dataset.joyshopCopyReady = "true";
+
+      console.log(
+        "JOYSHOP: Copy button initialized."
+      );
+
+
+      button.addEventListener(
+        "click",
+        async function () {
+
+          const originalText =
+            button.innerText;
+
+          const referralLink =
+            input.value;
+
+          if (!referralLink) {
+
+            console.error(
+              "JOYSHOP: Referral link is empty."
+            );
+
+            return;
+          }
+
+
+          /*
+           * ------------------------------------------
+           * Modern Clipboard API
+           * ------------------------------------------
+           */
+
+          try {
+
+            if (
+              navigator.clipboard &&
+              window.isSecureContext
+            ) {
+
+              await navigator.clipboard.writeText(
+                referralLink
+              );
+
+            } else {
+
+              /*
+               * --------------------------------------
+               * Fallback for older browsers
+               * --------------------------------------
+               */
+
+              input.focus();
+              input.select();
+              input.setSelectionRange(
+                0,
+                input.value.length
+              );
+
+              const successful =
+                document.execCommand("copy");
+
+              input.blur();
+
+              if (!successful) {
+                throw new Error(
+                  "Fallback copy failed"
+                );
+              }
+            }
+
+
+            /*
+             * --------------------------------------
+             * SUCCESS FEEDBACK
+             * --------------------------------------
+             */
+
+            button.innerText = "Copied!";
+
+            /*
+             * Optional accessibility feedback
+             */
+
+            button.setAttribute(
+              "aria-label",
+              "Referral link copied"
+            );
+
+
+            /*
+             * Reset button after 2 seconds
+             */
+
+            setTimeout(function () {
+
+              button.innerText =
+                originalText;
+
+              button.setAttribute(
+                "aria-label",
+                "Copy referral link"
+              );
+
+            }, 2000);
+
+
+            console.log(
+              "JOYSHOP: Referral link copied:",
+              referralLink
+            );
+
+          } catch (error) {
+
+            console.error(
+              "JOYSHOP: Referral link copy failed:",
+              error
+            );
+
+
+            /*
+             * --------------------------------------
+             * FAILURE FEEDBACK
+             * --------------------------------------
+             */
+
+            button.innerText =
+              "Copy failed";
+
+            setTimeout(function () {
+
+              button.innerText =
+                originalText;
+
+            }, 2000);
+          }
+
+        }
+      );
+
+    });
+  }
+
+
+  /*
+   * ==================================================
+   * 2. INITIALIZE COPY BUTTON
+   * ==================================================
+   */
+
+  if (
+    document.readyState === "loading"
+  ) {
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      setupReferralCopy
+    );
+
+  } else {
+
+    setupReferralCopy();
+
+  }
+
+
+  /*
+   * ==================================================
+   * 3. OBSERVE DYNAMICALLY LOADED CONTENT
+   * ==================================================
+   *
+   * Useful if the referral dashboard is rendered
+   * after the initial page load.
+   */
+
+  const referralObserver =
+    new MutationObserver(function () {
+
+      setupReferralCopy();
+
+    });
+
+
+  referralObserver.observe(
+    document.body,
+    {
+      childList: true,
+      subtree: true
+    }
+  );
+
+
+  /*
+   * ==================================================
+   * 4. CHECK FOR REFERRAL CODE
+   * ==================================================
+   */
+
+  const params =
+    new URLSearchParams(
+      window.location.search
+    );
+
+  const referralCode =
+    params.get("ref");
+
+
+  /*
+   * --------------------------------------------------
+   * No referral code = referral processing stops.
+   *
+   * IMPORTANT:
+   * Copy functionality above has already been
+   * initialized, so it still works.
+   * --------------------------------------------------
+   */
+
+  if (!referralCode) {
+
+    console.log(
+      "No referral code."
+    );
+
+    return;
+
+  }
+
+
+  console.log(
+    "Referral code detected:",
+    referralCode
+  );
+
+
+  /*
+   * ==================================================
+   * 5. SAVE REFERRAL CODE
+   * ==================================================
+   */
+
+  localStorage.setItem(
+    "joyshop_referral_code",
+    referralCode
+  );
+
+
+  document.cookie =
+    "joyshop_referral=" +
+    encodeURIComponent(referralCode) +
+    "; path=/; max-age=2592000; SameSite=Lax";
+
+
+  /*
+   * ==================================================
+   * 6. CHECK SHOPIFY CUSTOMER LOGIN
+   * ==================================================
+   */
+
+  const isLoggedIn =
+    {% if customer %}
+      true
+    {% else %}
+      false
+    {% endif %};
+
+
+  console.log(
+    "Customer logged in:",
+    isLoggedIn
+  );
+
+
+  /*
+   * ==================================================
+   * 7. CUSTOMER NOT LOGGED IN
+   * ==================================================
+   */
+
+  if (!isLoggedIn) {
+
+    console.log(
+      "Customer is NOT logged in."
+    );
+
+
+    /*
+     * Return to the current storefront page
+     * after Shopify authentication.
+     */
+
+    const returnTo =
+      window.location.pathname +
+      window.location.search;
+
+
+    const loginUrl =
+      "/customer_authentication/login?return_to=" +
+      encodeURIComponent(returnTo);
+
+
+    console.log(
+      "Redirecting to Shopify customer authentication:"
+    );
+
+    console.log(
+      loginUrl
+    );
+
+
+    window.location.replace(
+      loginUrl
+    );
+
+    return;
+
+  }
+
+
+  /*
+   * ==================================================
+   * 8. CUSTOMER IS LOGGED IN
+   * ==================================================
+   */
+
+  console.log(
+    "Customer is logged in."
+  );
+
+
+  /*
+   * ==================================================
+   * 9. PREVENT REPEATED LINKING
+   * ==================================================
+   */
+
+  const alreadyLinked =
+    localStorage.getItem(
+      "joyshop_referral_linked"
+    );
+
+
+  if (
+    alreadyLinked === referralCode
+  ) {
+
+    console.log(
+      "Referral already linked in this browser."
+    );
+
+    return;
+
+  }
+
+
+  /*
+   * ==================================================
+   * 10. SEND REFERRAL TO JOYSHOP BACKEND
+   * ==================================================
+   */
+
+  console.log(
+    "Sending referral to JOYSHOP..."
+  );
+
+
+  fetch(
+    "/apps/joyshop?ref=" +
+      encodeURIComponent(
+        referralCode
+      ),
+    {
+      method: "GET",
+
+      credentials: "include",
+
+      headers: {
+        "Accept": "application/json"
+      }
+    }
+  )
+
+    .then(
+      function (response) {
+
+        console.log(
+          "JOYSHOP response status:",
+          response.status
+        );
+
+
+        return response.json();
+
+      }
+    )
+
+    .then(
+      function (data) {
+
+        console.log(
+          "JOYSHOP referral response:",
+          data
+        );
+
+
+        if (data.success) {
+
+          console.log(
+            "========================================"
+          );
+
+          console.log(
+            "REFERRAL SUCCESSFULLY LINKED"
+          );
+
+          console.log(
+            "Referral Code:",
+            referralCode
+          );
+
+          console.log(
+            "Customer ID:",
+            data.customerId
+          );
+
+          console.log(
+            "Referral ID:",
+            data.referralId
+          );
+
+          console.log(
+            "========================================"
+          );
+
+
+          /*
+           * Remember that this referral
+           * was linked.
+           */
+
+          localStorage.setItem(
+            "joyshop_referral_linked",
+            referralCode
+          );
+
+
+        } else {
+
+          console.log(
+            "Referral linking failed:",
+            data.error
+          );
+
+        }
+
+      }
+    )
+
+    .catch(
+      function (error) {
+
+        console.error(
+          "JOYSHOP referral request failed:",
+          error
+        );
+
+      }
+    );
+
+
+})();
+</script>
+
+
+{% schema %}
+{
+  "name": "Referral Gate",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

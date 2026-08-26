@@ -1,0 +1,326 @@
+import { useLoaderData, Form } from "react-router";
+import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+export const loader = async ({ request }) => {
+  const { admin, session } = await authenticate.admin(request);
+
+  const shop = session.shop;
+
+  // Get existing ambassadors
+  const ambassadors = await db.ambassador.findMany({
+    where: { shop },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Get Shopify customers
+  const response = await admin.graphql(`
+    #graphql
+    query GetCustomers {
+      customers(first: 50) {
+        nodes {
+          id
+          firstName
+          lastName
+          email
+          phone
+          numberOfOrders
+          amountSpent {
+            amount
+            currencyCode
+          }
+        }
+      }
+    }
+  `);
+
+  const result = await response.json();
+
+  const customers = result?.data?.customers?.nodes || [];
+
+  // Remove customers who are already ambassadors
+  const ambassadorCustomerIds = new Set(
+    ambassadors.map((ambassador) => ambassador.customerId)
+  );
+
+  const availableCustomers = customers.filter(
+    (customer) => !ambassadorCustomerIds.has(customer.id)
+  );
+
+  return {
+    shop,
+    ambassadors,
+    customers: availableCustomers,
+  };
+};
+
+export const action = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+
+  const shop = session.shop;
+
+  const formData = await request.formData();
+
+  const customerId = formData.get("customerId");
+  const name = formData.get("name");
+  const email = formData.get("email");
+  const phone = formData.get("phone");
+
+  if (!customerId || !email) {
+    return {
+      success: false,
+      error: "Customer information is missing.",
+    };
+  }
+
+  // Check if customer is already an ambassador
+  const existing = await db.ambassador.findFirst({
+    where: {
+      shop,
+      customerId,
+    },
+  });
+
+  if (existing) {
+    return {
+      success: false,
+      error: "This customer is already an ambassador.",
+    };
+  }
+
+  // Generate unique referral code
+  const cleanName =
+    String(name || "AMBASSADOR")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, 8) || "AMBASSADOR";
+
+  const randomPart = Math.random()
+    .toString(36)
+    .substring(2, 8)
+    .toUpperCase();
+
+  const referralCode = `${cleanName}-${randomPart}`;
+
+  const ambassador = await db.ambassador.create({
+    data: {
+      shop,
+      customerId: String(customerId),
+      name: String(name || "Ambassador"),
+      email: String(email),
+      phone: phone ? String(phone) : null,
+      referralCode,
+      status: "ACTIVE",
+    },
+  });
+
+  return {
+    success: true,
+    ambassador,
+  };
+};
+
+function money(amount, currency = "INR") {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(Number(amount || 0));
+}
+
+export default function Ambassadors() {
+  const { ambassadors, customers } = useLoaderData();
+
+  return (
+    <s-page heading="Ambassadors">
+
+      {/* HEADER */}
+      <s-section>
+        <s-stack direction="block" gap="base">
+
+          <s-heading>
+            JOYSHOP Ambassador Program
+          </s-heading>
+
+          <s-text>
+            Manage ambassadors, referral links, referrals and earnings from
+            one place.
+          </s-text>
+
+        </s-stack>
+      </s-section>
+
+      {/* CURRENT AMBASSADORS */}
+      <s-section heading="Current Ambassadors">
+
+        {ambassadors.length === 0 ? (
+          <s-banner tone="info">
+            No ambassadors have been created yet.
+          </s-banner>
+        ) : (
+          <s-stack direction="block" gap="base">
+
+            {ambassadors.map((ambassador) => (
+              <s-card key={ambassador.id}>
+
+                <s-stack
+                  direction="inline"
+                  gap="base"
+                  align="center"
+                  justify="space-between"
+                >
+
+                  <s-stack direction="block" gap="small">
+
+                    <s-heading>
+                      {ambassador.name}
+                    </s-heading>
+
+                    <s-text>
+                      {ambassador.email}
+                    </s-text>
+
+                    <s-text>
+                      Referral Code:{" "}
+                      <strong>{ambassador.referralCode}</strong>
+                    </s-text>
+
+                  </s-stack>
+
+                  <s-stack direction="block" gap="small">
+
+                    <s-text>
+                      Referrals: {ambassador.totalReferrals}
+                    </s-text>
+
+                    <s-text>
+                      Orders: {ambassador.totalOrders}
+                    </s-text>
+
+                    <s-text>
+                      Earnings: {money(ambassador.totalEarnings)}
+                    </s-text>
+
+                  </s-stack>
+
+                </s-stack>
+
+              </s-card>
+            ))}
+
+          </s-stack>
+        )}
+
+      </s-section>
+
+      {/* CUSTOMER LIST */}
+      <s-section heading="Create Ambassador">
+
+        <s-text>
+          Select a Shopify customer to make them an ambassador.
+        </s-text>
+
+        {customers.length === 0 ? (
+          <s-banner tone="info">
+            All available customers are already ambassadors, or your store
+            does not have any customers yet.
+          </s-banner>
+        ) : (
+          <s-stack direction="block" gap="base">
+
+            {customers.map((customer) => {
+
+              const customerName =
+                `${customer.firstName || ""} ${
+                  customer.lastName || ""
+                }`.trim() || "Unnamed Customer";
+
+              return (
+                <s-card key={customer.id}>
+
+                  <s-stack
+                    direction="inline"
+                    gap="base"
+                    align="center"
+                    justify="space-between"
+                  >
+
+                    <s-stack direction="block" gap="small">
+
+                      <s-heading>
+                        {customerName}
+                      </s-heading>
+
+                      <s-text>
+                        {customer.email || "No email"}
+                      </s-text>
+
+                      {customer.phone && (
+                        <s-text>
+                          {customer.phone}
+                        </s-text>
+                      )}
+
+                      <s-text>
+                        Orders: {customer.numberOfOrders || 0}
+                      </s-text>
+
+                      <s-text>
+                        Spent:{" "}
+                        {money(
+                          customer.amountSpent?.amount,
+                          customer.amountSpent?.currencyCode || "INR"
+                        )}
+                      </s-text>
+
+                    </s-stack>
+
+                    <Form method="post">
+
+                      <input
+                        type="hidden"
+                        name="customerId"
+                        value={customer.id}
+                      />
+
+                      <input
+                        type="hidden"
+                        name="name"
+                        value={customerName}
+                      />
+
+                      <input
+                        type="hidden"
+                        name="email"
+                        value={customer.email || ""}
+                      />
+
+                      <input
+                        type="hidden"
+                        name="phone"
+                        value={customer.phone || ""}
+                      />
+
+                      <s-button
+                        type="submit"
+                        variant="primary"
+                      >
+                        Make Ambassador
+                      </s-button>
+
+                    </Form>
+
+                  </s-stack>
+
+                </s-card>
+              );
+            })}
+
+          </s-stack>
+        )}
+
+      </s-section>
+
+    </s-page>
+  );
+}
