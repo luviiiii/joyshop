@@ -1,65 +1,27 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-
 client_id = "ac2cf1808f44b876acba801172b6b9f6"
-name = "JOYSHOP"
-application_url = "https://example.com"
+application_url = "https://joyshop.onrender.com"
 embedded = true
-
-[build]
-automatically_update_urls_on_dev = true
-
-[events]
-api_version = "unstable"
-
-  [[events.subscription]]
-  handle = "app_events"
-  topic = "Product"
-  actions = [ "update" ]
-  uri = "/events/app/products"
-
-[webhooks]
-api_version = "2026-07"
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/orders_paid"
-  topics = [ "orders/paid" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
+name = "JOYSHOP"
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,write_products,read_orders"
-optional_scopes = [ ]
+scopes = "write_products,read_products,read_customers,read_orders,read_discounts,write_discounts,read_files,write_files,write_app_proxy" 
+optional_scopes = []
 use_legacy_install_flow = false
-
-[auth]
-redirect_urls = [ ]
-
-[app_proxy]
-url = "/apps/joyshop"
-subpath = "joyshop"
-prefix = "apps"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
 name = "Demo Source Info"
 description = "Tracks products created by the Shopify app template for development"
 
-  [product.metafields.app.demo_info.access]
-  admin = "merchant_read_write"
+[product.metafields.app.demo_info.access]
+admin = "merchant_read_write"
 
 [metaobjects.app.example]
 name = "Example"
 description = "An example metaobject definition created by this template"
 
-  [metaobjects.app.example.access]
-  admin = "merchant_read_write"
+[metaobjects.app.example.access]
+admin = "merchant_read_write"
 
 [metaobjects.app.example.fields.title]
 name = "Title"
@@ -69,3 +31,41 @@ required = true
 [metaobjects.app.example.fields.description]
 name = "Description"
 type = "multi_line_text_field"
+
+[webhooks]
+api_version = "2026-07"
+
+[[webhooks.subscriptions]]
+uri = "/webhooks/app/uninstalled"
+topics = ["app/uninstalled"]
+
+[[webhooks.subscriptions]]
+uri = "/webhooks/app/scopes_update"
+topics = ["app/scopes_update"]
+
+[[webhooks.subscriptions]]
+uri = "/webhooks/app/orders_paid"
+topics = ["orders/paid"]
+
+[events]
+api_version = "unstable"
+
+[[events.subscription]]
+handle = "app_events"
+topic = "Product"
+actions = ["update"]
+uri = "/events/app/products"
+
+[auth]
+redirect_urls = [
+  "https://joyshop.onrender.com/auth/callback"
+]
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
+
+[app_proxy]
+url = "/apps/joyshop"
+prefix = "apps"
+subpath = "joyshop"
