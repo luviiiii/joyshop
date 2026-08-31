@@ -1,18 +1,21 @@
 FROM node:20-alpine
-RUN apk add --no-cache openssl
 
-EXPOSE 3000
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY package.json package-lock.json* ./
+RUN corepack enable
 
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package.json pnpm-lock.yaml ./
+
+RUN pnpm install --frozen-lockfile --prod=false
 
 COPY . .
 
-RUN npm run build
+RUN pnpm run build
 
-CMD ["npm", "run", "docker-start"]
+EXPOSE 3000
+
+CMD ["pnpm", "run", "docker-start"]
