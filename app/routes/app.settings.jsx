@@ -27,7 +27,9 @@ export async function loader({ request }) {
     });
   }
 
-  return { settings };
+  return {
+    settings,
+  };
 }
 
 export async function action({ request }) {
@@ -37,7 +39,32 @@ export async function action({ request }) {
 
   const formData = await request.formData();
 
-  const enabled = formData.get("enabled") === "true";
+  /*
+   * CHECKBOXES
+   *
+   * A checked checkbox sends "true".
+   * An unchecked checkbox sends nothing.
+   *
+   * Therefore:
+   * true  = get("field") === "true"
+   * false = anything else
+   */
+
+  const enabled =
+    formData.get("enabled") === "true";
+
+  const firstOrderCreditEnabled =
+    formData.get("firstOrderCreditEnabled") === "true";
+
+  const commissionOnPaidOrders =
+    formData.get("commissionOnPaidOrders") === "true";
+
+  const excludeCancelledOrders =
+    formData.get("excludeCancelledOrders") === "true";
+
+  /*
+   * NUMERIC SETTINGS
+   */
 
   const ambassadorEligibilityAmount = Number(
     formData.get("ambassadorEligibilityAmount")
@@ -51,14 +78,12 @@ export async function action({ request }) {
     formData.get("firstOrderCredit")
   );
 
-  const firstOrderCreditEnabled =
-    formData.get("firstOrderCreditEnabled") === "true";
-
   const creditExpiryDaysValue =
     formData.get("creditExpiryDays");
 
   const creditExpiryDays =
-    creditExpiryDaysValue === ""
+    creditExpiryDaysValue === "" ||
+    creditExpiryDaysValue === null
       ? null
       : Number(creditExpiryDaysValue);
 
@@ -66,52 +91,180 @@ export async function action({ request }) {
     formData.get("commissionRate")
   );
 
+  /*
+   * ATTRIBUTION
+   */
+
   const referralAttribution =
-    formData.get("referralAttribution");
+    String(
+      formData.get("referralAttribution") ||
+        "FIRST_VALID"
+    );
 
-  const commissionOnPaidOrders =
-    formData.get("commissionOnPaidOrders") === "true";
+  /*
+   * BASIC VALIDATION
+   */
 
-  const excludeCancelledOrders =
-    formData.get("excludeCancelledOrders") === "true";
+  if (
+    !Number.isFinite(ambassadorEligibilityAmount) ||
+    ambassadorEligibilityAmount < 0
+  ) {
+    return {
+      success: false,
+      error: "Invalid ambassador eligibility amount.",
+    };
+  }
 
-  await prisma.referralSettings.upsert({
-    where: {
-      shop,
-    },
+  if (
+    !Number.isFinite(invitationValidityDays) ||
+    invitationValidityDays < 1
+  ) {
+    return {
+      success: false,
+      error: "Invitation validity must be at least 1 day.",
+    };
+  }
 
-    update: {
-      enabled,
-      ambassadorEligibilityAmount,
-      invitationValidityDays,
-      firstOrderCredit,
-      firstOrderCreditEnabled,
-      creditExpiryDays,
-      commissionRate,
-      referralAttribution,
-      commissionOnPaidOrders,
-      excludeCancelledOrders,
-    },
+  if (
+    !Number.isFinite(firstOrderCredit) ||
+    firstOrderCredit < 0
+  ) {
+    return {
+      success: false,
+      error: "Invalid first-order credit amount.",
+    };
+  }
 
-    create: {
-      shop,
-      enabled,
-      ambassadorEligibilityAmount,
-      invitationValidityDays,
-      firstOrderCredit,
-      firstOrderCreditEnabled,
-      creditExpiryDays,
-      commissionRate,
-      referralAttribution,
-      commissionOnPaidOrders,
-      excludeCancelledOrders,
-    },
-  });
+  if (
+    creditExpiryDays !== null &&
+    (!Number.isFinite(creditExpiryDays) ||
+      creditExpiryDays < 1)
+  ) {
+    return {
+      success: false,
+      error: "Credit expiry must be at least 1 day.",
+    };
+  }
 
-  return {
-    success: true,
-    message: "Program settings saved successfully.",
-  };
+  if (
+    !Number.isFinite(commissionRate) ||
+    commissionRate < 0 ||
+    commissionRate > 100
+  ) {
+    return {
+      success: false,
+      error: "Commission rate must be between 0% and 100%.",
+    };
+  }
+
+  if (
+    referralAttribution !== "FIRST_VALID" &&
+    referralAttribution !== "LAST_VALID"
+  ) {
+    return {
+      success: false,
+      error: "Invalid referral attribution method.",
+    };
+  }
+
+  /*
+   * SAVE SETTINGS
+   */
+
+  try {
+    const settings = await prisma.referralSettings.upsert({
+      where: {
+        shop,
+      },
+
+      update: {
+        enabled,
+
+        ambassadorEligibilityAmount,
+
+        invitationValidityDays,
+
+        firstOrderCredit,
+
+        firstOrderCreditEnabled,
+
+        creditExpiryDays,
+
+        commissionRate,
+
+        referralAttribution,
+
+        commissionOnPaidOrders,
+
+        excludeCancelledOrders,
+      },
+
+      create: {
+        shop,
+
+        enabled,
+
+        ambassadorEligibilityAmount,
+
+        invitationValidityDays,
+
+        firstOrderCredit,
+
+        firstOrderCreditEnabled,
+
+        creditExpiryDays,
+
+        commissionRate,
+
+        referralAttribution,
+
+        commissionOnPaidOrders,
+
+        excludeCancelledOrders,
+      },
+    });
+
+    console.log("====================================");
+    console.log("JOYSHOP SETTINGS SAVED");
+    console.log("Shop:", shop);
+    console.log("Program Enabled:", settings.enabled);
+    console.log(
+      "First Order Credit Enabled:",
+      settings.firstOrderCreditEnabled
+    );
+    console.log(
+      "Commission On Paid Orders:",
+      settings.commissionOnPaidOrders
+    );
+    console.log(
+      "Exclude Cancelled Orders:",
+      settings.excludeCancelledOrders
+    );
+    console.log(
+      "Commission Rate:",
+      settings.commissionRate
+    );
+    console.log(
+      "Eligibility Amount:",
+      settings.ambassadorEligibilityAmount
+    );
+    console.log("====================================");
+
+    return {
+      success: true,
+      message: "Program settings saved successfully.",
+    };
+  } catch (error) {
+    console.error("====================================");
+    console.error("JOYSHOP SETTINGS SAVE ERROR");
+    console.error(error);
+    console.error("====================================");
+
+    return {
+      success: false,
+      error: "Failed to save program settings.",
+    };
+  }
 }
 
 export default function ProgramSettings() {
@@ -126,6 +279,8 @@ export default function ProgramSettings() {
         margin: "0 auto",
       }}
     >
+      {/* PAGE HEADER */}
+
       <h1
         style={{
           fontSize: "32px",
@@ -145,6 +300,8 @@ export default function ProgramSettings() {
         Configure your JOYSHOP Ambassador referral program.
       </p>
 
+      {/* SUCCESS MESSAGE */}
+
       {actionData?.success && (
         <div
           style={{
@@ -161,9 +318,30 @@ export default function ProgramSettings() {
         </div>
       )}
 
+      {/* ERROR MESSAGE */}
+
+      {actionData?.success === false &&
+        actionData?.error && (
+          <div
+            style={{
+              background: "#ffebee",
+              color: "#c62828",
+              border: "1px solid #ef9a9a",
+              borderRadius: "8px",
+              padding: "14px 18px",
+              marginBottom: "24px",
+              fontWeight: "600",
+            }}
+          >
+            ✕ {actionData.error}
+          </div>
+        )}
+
       <Form method="post">
 
-        {/* PROGRAM STATUS */}
+        {/* ============================================
+            PROGRAM STATUS
+        ============================================ */}
 
         <div style={cardStyle}>
           <h2 style={headingStyle}>
@@ -173,12 +351,6 @@ export default function ProgramSettings() {
           <p style={descriptionStyle}>
             Turn the ambassador referral program on or off.
           </p>
-
-          <input
-            type="hidden"
-            name="enabled"
-            value="false"
-          />
 
           <label style={checkboxLabelStyle}>
             <input
@@ -190,17 +362,21 @@ export default function ProgramSettings() {
             />
 
             <span>
-              <strong>Enable referral program</strong>
+              <strong>
+                Enable referral program
+              </strong>
 
               <small style={smallStyle}>
-                Allow customers to participate in the ambassador program.
+                Allow customers to participate in the
+                ambassador program.
               </small>
             </span>
           </label>
         </div>
 
-
-        {/* AMBASSADOR SETTINGS */}
+        {/* ============================================
+            AMBASSADOR ELIGIBILITY
+        ============================================ */}
 
         <div style={cardStyle}>
           <h2 style={headingStyle}>
@@ -216,7 +392,9 @@ export default function ProgramSettings() {
           </label>
 
           <div style={inputWrapperStyle}>
-            <span style={prefixStyle}>₹</span>
+            <span style={prefixStyle}>
+              ₹
+            </span>
 
             <input
               type="number"
@@ -231,8 +409,8 @@ export default function ProgramSettings() {
           </div>
 
           <small style={helpStyle}>
-            Customers must spend at least this amount to qualify
-            as an ambassador.
+            Customers must spend at least this amount
+            to qualify as an ambassador.
           </small>
 
           <label style={labelStyle}>
@@ -257,8 +435,9 @@ export default function ProgramSettings() {
           </div>
         </div>
 
-
-        {/* CUSTOMER CREDIT */}
+        {/* ============================================
+            CUSTOMER REFERRAL CREDIT
+        ============================================ */}
 
         <div style={cardStyle}>
           <h2 style={headingStyle}>
@@ -266,15 +445,9 @@ export default function ProgramSettings() {
           </h2>
 
           <p style={descriptionStyle}>
-            Configure the reward given to a customer after
-            joining through a referral.
+            Configure the reward given to a customer
+            after joining through a referral.
           </p>
-
-          <input
-            type="hidden"
-            name="firstOrderCreditEnabled"
-            value="false"
-          />
 
           <label style={checkboxLabelStyle}>
             <input
@@ -288,10 +461,13 @@ export default function ProgramSettings() {
             />
 
             <span>
-              <strong>Enable first-order credit</strong>
+              <strong>
+                Enable first-order credit
+              </strong>
 
               <small style={smallStyle}>
-                Give referred customers a credit for their first order.
+                Give referred customers a credit for
+                their first order.
               </small>
             </span>
           </label>
@@ -301,7 +477,9 @@ export default function ProgramSettings() {
           </label>
 
           <div style={inputWrapperStyle}>
-            <span style={prefixStyle}>₹</span>
+            <span style={prefixStyle}>
+              ₹
+            </span>
 
             <input
               type="number"
@@ -338,12 +516,14 @@ export default function ProgramSettings() {
           </div>
 
           <small style={helpStyle}>
-            Leave empty if customer credits should never expire.
+            Leave empty if customer credits should never
+            expire.
           </small>
         </div>
 
-
-        {/* COMMISSION */}
+        {/* ============================================
+            AMBASSADOR COMMISSION
+        ============================================ */}
 
         <div style={cardStyle}>
           <h2 style={headingStyle}>
@@ -377,15 +557,9 @@ export default function ProgramSettings() {
           </div>
 
           <small style={helpStyle}>
-            Example: 10 means the ambassador earns 10% of the
-            qualifying order amount.
+            Example: 10 means the ambassador earns
+            10% of the qualifying order amount.
           </small>
-
-          <input
-            type="hidden"
-            name="commissionOnPaidOrders"
-            value="false"
-          />
 
           <label style={checkboxLabelStyle}>
             <input
@@ -404,16 +578,11 @@ export default function ProgramSettings() {
               </strong>
 
               <small style={smallStyle}>
-                Commission is generated only after the order is paid.
+                Commission is generated only after
+                the order is paid.
               </small>
             </span>
           </label>
-
-          <input
-            type="hidden"
-            name="excludeCancelledOrders"
-            value="false"
-          />
 
           <label style={checkboxLabelStyle}>
             <input
@@ -432,14 +601,16 @@ export default function ProgramSettings() {
               </strong>
 
               <small style={smallStyle}>
-                Cancelled orders will not generate commission.
+                Cancelled orders will not generate
+                commission.
               </small>
             </span>
           </label>
         </div>
 
-
-        {/* ATTRIBUTION */}
+        {/* ============================================
+            REFERRAL ATTRIBUTION
+        ============================================ */}
 
         <div style={cardStyle}>
           <h2 style={headingStyle}>
@@ -447,8 +618,8 @@ export default function ProgramSettings() {
           </h2>
 
           <p style={descriptionStyle}>
-            Decide which ambassador receives credit when
-            multiple referral links are used.
+            Decide which ambassador receives credit
+            when multiple referral links are used.
           </p>
 
           <label style={labelStyle}>
@@ -472,13 +643,15 @@ export default function ProgramSettings() {
           </select>
 
           <small style={helpStyle}>
-            First valid referral keeps the first qualifying
-            ambassador attached to the customer.
+            First valid referral keeps the first
+            qualifying ambassador attached to the
+            customer.
           </small>
         </div>
 
-
-        {/* SAVE */}
+        {/* ============================================
+            SAVE
+        ============================================ */}
 
         <div
           style={{
@@ -510,8 +683,9 @@ export default function ProgramSettings() {
   );
 }
 
-
-/* STYLES */
+/* ============================================
+   STYLES
+============================================ */
 
 const cardStyle = {
   background: "#fff",
