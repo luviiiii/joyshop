@@ -1,6 +1,17 @@
 {
   "name": "joyshop",
   "private": true,
+
+  "pnpm": {
+  "onlyBuiltDependencies": [
+    "@parcel/watcher",
+    "@prisma/client",
+    "@prisma/engines",
+    "esbuild",
+    "prisma",
+    "unrs-resolver"
+  ]
+},
   "scripts": {
     "build": "react-router build",
     "dev": "shopify app dev",
