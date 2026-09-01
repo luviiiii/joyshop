@@ -1,6 +1,10 @@
 import { useLoaderData, Form } from "react-router";
+import { useState } from "react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+
+// Storefront domain used to build the shareable referral link.
+const STOREFRONT_DOMAIN = "https://www.justorganik.co";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -128,6 +132,56 @@ function money(amount, currency = "INR") {
   }).format(Number(amount || 0));
 }
 
+function buildReferralLink(referralCode) {
+  return `${STOREFRONT_DOMAIN}/?ref=${encodeURIComponent(referralCode)}`;
+}
+
+/* =========================================================
+   REFERRAL LINK ROW WITH COPY BUTTON
+========================================================= */
+
+function ReferralLinkRow({ referralCode }) {
+  const [copied, setCopied] = useState(false);
+
+  const referralLink = buildReferralLink(referralCode);
+
+  async function handleCopy() {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(referralLink);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = referralLink;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy referral link:", error);
+    }
+  }
+
+  return (
+    <s-stack direction="inline" gap="small" align="center">
+      <s-text>
+        Referral Link:{" "}
+        <strong>{referralLink}</strong>
+      </s-text>
+
+      <s-button onclick={handleCopy}>
+        {copied ? "Copied!" : "Copy Link"}
+      </s-button>
+    </s-stack>
+  );
+}
+
 export default function Ambassadors() {
   const { ambassadors, customers } = useLoaderData();
 
@@ -163,45 +217,53 @@ export default function Ambassadors() {
             {ambassadors.map((ambassador) => (
               <s-card key={ambassador.id}>
 
-                <s-stack
-                  direction="inline"
-                  gap="base"
-                  align="center"
-                  justify="space-between"
-                >
+                <s-stack direction="block" gap="base">
 
-                  <s-stack direction="block" gap="small">
+                  <s-stack
+                    direction="inline"
+                    gap="base"
+                    align="center"
+                    justify="space-between"
+                  >
 
-                    <s-heading>
-                      {ambassador.name}
-                    </s-heading>
+                    <s-stack direction="block" gap="small">
 
-                    <s-text>
-                      {ambassador.email}
-                    </s-text>
+                      <s-heading>
+                        {ambassador.name}
+                      </s-heading>
 
-                    <s-text>
-                      Referral Code:{" "}
-                      <strong>{ambassador.referralCode}</strong>
-                    </s-text>
+                      <s-text>
+                        {ambassador.email}
+                      </s-text>
+
+                      <s-text>
+                        Referral Code:{" "}
+                        <strong>{ambassador.referralCode}</strong>
+                      </s-text>
+
+                    </s-stack>
+
+                    <s-stack direction="block" gap="small">
+
+                      <s-text>
+                        Referrals: {ambassador.totalReferrals}
+                      </s-text>
+
+                      <s-text>
+                        Orders: {ambassador.totalOrders}
+                      </s-text>
+
+                      <s-text>
+                        Earnings: {money(ambassador.totalEarnings)}
+                      </s-text>
+
+                    </s-stack>
 
                   </s-stack>
 
-                  <s-stack direction="block" gap="small">
-
-                    <s-text>
-                      Referrals: {ambassador.totalReferrals}
-                    </s-text>
-
-                    <s-text>
-                      Orders: {ambassador.totalOrders}
-                    </s-text>
-
-                    <s-text>
-                      Earnings: {money(ambassador.totalEarnings)}
-                    </s-text>
-
-                  </s-stack>
+                  <ReferralLinkRow
+                    referralCode={ambassador.referralCode}
+                  />
 
                 </s-stack>
 
