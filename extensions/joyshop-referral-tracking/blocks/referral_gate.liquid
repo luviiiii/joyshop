@@ -1,323 +1,187 @@
+{% comment %}
+  JOYSHOP Referral Gate
+
+  - Reads ?ref=REFERRAL_CODE
+  - Saves referral code in a cookie (30 days)
+  - Tracks the visit via the JOYSHOP app (correct endpoint)
+  - Forces non-logged-in visitors to sign in / create an account
+    before they can continue, so the referral can be linked to
+    their customer ID
+  - Also powers the "Copy referral link" button on the
+    ambassador dashboard (works independently of ?ref=)
+{% endcomment %}
+
 <script>
 (function () {
+  "use strict";
 
-  console.log("========================================");
-  console.log("JOYSHOP REFERRAL GATE");
-  console.log("Current URL:", window.location.href);
+  const REF_PARAM = "ref";
+  const COOKIE_NAME = "joyshop_ref";
+  const COOKIE_DAYS = 30;
+  const LINKED_KEY = "joyshop_referral_linked";
 
-
-  /*
-   * ==================================================
-   * 1. REFERRAL LINK COPY FUNCTIONALITY
-   * ==================================================
-   *
-   * Works independently of ?ref=
-   * so customers can copy their referral link
-   * from their dashboard.
-   */
+  /* =========================================================
+     1. REFERRAL LINK COPY FUNCTIONALITY
+     (works independently of ?ref=, used on ambassador dashboard)
+  ========================================================= */
 
   function setupReferralCopy() {
-
-    const referralBoxes =
-      document.querySelectorAll(".referral-box");
+    const referralBoxes = document.querySelectorAll(".referral-box");
 
     if (!referralBoxes.length) {
       return;
     }
 
-    console.log(
-      "JOYSHOP: Found referral boxes:",
-      referralBoxes.length
-    );
-
     referralBoxes.forEach(function (box) {
-
       const button =
-        box.querySelector(
-          "button.referral-copy-btn"
-        ) ||
+        box.querySelector("button.referral-copy-btn") ||
         box.querySelector("button");
 
-      const input =
-        box.querySelector(
-          'input[type="text"]'
-        );
+      const input = box.querySelector('input[type="text"]');
 
       if (!button || !input) {
-        console.log(
-          "JOYSHOP: Referral copy elements not found."
-        );
-
         return;
       }
 
-      /*
-       * Prevent attaching the event multiple times.
-       */
-
-      if (
-        button.dataset.joyshopCopyReady === "true"
-      ) {
+      if (button.dataset.joyshopCopyReady === "true") {
         return;
       }
 
       button.dataset.joyshopCopyReady = "true";
 
-      console.log(
-        "JOYSHOP: Copy button initialized."
-      );
+      button.addEventListener("click", async function () {
+        const originalText = button.innerText;
+        const referralLink = input.value;
 
+        if (!referralLink) {
+          console.error("JOYSHOP: Referral link is empty.");
+          return;
+        }
 
-      button.addEventListener(
-        "click",
-        async function () {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(referralLink);
+          } else {
+            input.focus();
+            input.select();
+            input.setSelectionRange(0, input.value.length);
 
-          const originalText =
-            button.innerText;
+            const successful = document.execCommand("copy");
+            input.blur();
 
-          const referralLink =
-            input.value;
-
-          if (!referralLink) {
-
-            console.error(
-              "JOYSHOP: Referral link is empty."
-            );
-
-            return;
-          }
-
-
-          /*
-           * ------------------------------------------
-           * Modern Clipboard API
-           * ------------------------------------------
-           */
-
-          try {
-
-            if (
-              navigator.clipboard &&
-              window.isSecureContext
-            ) {
-
-              await navigator.clipboard.writeText(
-                referralLink
-              );
-
-            } else {
-
-              /*
-               * --------------------------------------
-               * Fallback for older browsers
-               * --------------------------------------
-               */
-
-              input.focus();
-              input.select();
-              input.setSelectionRange(
-                0,
-                input.value.length
-              );
-
-              const successful =
-                document.execCommand("copy");
-
-              input.blur();
-
-              if (!successful) {
-                throw new Error(
-                  "Fallback copy failed"
-                );
-              }
+            if (!successful) {
+              throw new Error("Fallback copy failed");
             }
-
-
-            /*
-             * --------------------------------------
-             * SUCCESS FEEDBACK
-             * --------------------------------------
-             */
-
-            button.innerText = "Copied!";
-
-            /*
-             * Optional accessibility feedback
-             */
-
-            button.setAttribute(
-              "aria-label",
-              "Referral link copied"
-            );
-
-
-            /*
-             * Reset button after 2 seconds
-             */
-
-            setTimeout(function () {
-
-              button.innerText =
-                originalText;
-
-              button.setAttribute(
-                "aria-label",
-                "Copy referral link"
-              );
-
-            }, 2000);
-
-
-            console.log(
-              "JOYSHOP: Referral link copied:",
-              referralLink
-            );
-
-          } catch (error) {
-
-            console.error(
-              "JOYSHOP: Referral link copy failed:",
-              error
-            );
-
-
-            /*
-             * --------------------------------------
-             * FAILURE FEEDBACK
-             * --------------------------------------
-             */
-
-            button.innerText =
-              "Copy failed";
-
-            setTimeout(function () {
-
-              button.innerText =
-                originalText;
-
-            }, 2000);
           }
 
+          button.innerText = "Copied!";
+          button.setAttribute("aria-label", "Referral link copied");
+
+          setTimeout(function () {
+            button.innerText = originalText;
+            button.setAttribute("aria-label", "Copy referral link");
+          }, 2000);
+
+        } catch (error) {
+          console.error("JOYSHOP: Referral link copy failed:", error);
+
+          button.innerText = "Copy failed";
+
+          setTimeout(function () {
+            button.innerText = originalText;
+          }, 2000);
+        }
+      });
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupReferralCopy);
+  } else {
+    setupReferralCopy();
+  }
+
+  const referralObserver = new MutationObserver(function () {
+    setupReferralCopy();
+  });
+
+  referralObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  /* =========================================================
+     2. COOKIE HELPERS
+  ========================================================= */
+
+  function setReferralCookie(code) {
+    if (!code) return;
+
+    const maxAge = COOKIE_DAYS * 24 * 60 * 60;
+
+    document.cookie =
+      COOKIE_NAME +
+      "=" +
+      encodeURIComponent(code) +
+      "; path=/" +
+      "; max-age=" +
+      maxAge +
+      "; SameSite=Lax";
+  }
+
+  function getReferralFromCookie() {
+    const cookies = document.cookie.split(";");
+
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+
+      if (cookie.indexOf(COOKIE_NAME + "=") === 0) {
+        return decodeURIComponent(
+          cookie.substring((COOKIE_NAME + "=").length)
+        );
+      }
+    }
+
+    return null;
+  }
+
+  /* =========================================================
+     3. TRACK REFERRAL VISIT (correct endpoint)
+  ========================================================= */
+
+  async function trackReferralVisit(code) {
+    if (!code) return null;
+
+    try {
+      const response = await fetch(
+        "/apps/joyshop/ref/track?ref=" + encodeURIComponent(code),
+        {
+          method: "GET",
+          credentials: "same-origin",
+          headers: {
+            "Accept": "application/json",
+          },
         }
       );
 
-    });
-  }
+      const data = await response.json();
 
+      console.log("JOYSHOP REFERRAL TRACK RESPONSE:", data);
 
-  /*
-   * ==================================================
-   * 2. INITIALIZE COPY BUTTON
-   * ==================================================
-   */
+      return data;
 
-  if (
-    document.readyState === "loading"
-  ) {
-
-    document.addEventListener(
-      "DOMContentLoaded",
-      setupReferralCopy
-    );
-
-  } else {
-
-    setupReferralCopy();
-
-  }
-
-
-  /*
-   * ==================================================
-   * 3. OBSERVE DYNAMICALLY LOADED CONTENT
-   * ==================================================
-   *
-   * Useful if the referral dashboard is rendered
-   * after the initial page load.
-   */
-
-  const referralObserver =
-    new MutationObserver(function () {
-
-      setupReferralCopy();
-
-    });
-
-
-  referralObserver.observe(
-    document.body,
-    {
-      childList: true,
-      subtree: true
+    } catch (error) {
+      console.error("JOYSHOP REFERRAL TRACKING ERROR:", error);
+      return null;
     }
-  );
-
-
-  /*
-   * ==================================================
-   * 4. CHECK FOR REFERRAL CODE
-   * ==================================================
-   */
-
-  const params =
-    new URLSearchParams(
-      window.location.search
-    );
-
-  const referralCode =
-    params.get("ref");
-
-
-  /*
-   * --------------------------------------------------
-   * No referral code = referral processing stops.
-   *
-   * IMPORTANT:
-   * Copy functionality above has already been
-   * initialized, so it still works.
-   * --------------------------------------------------
-   */
-
-  if (!referralCode) {
-
-    console.log(
-      "No referral code."
-    );
-
-    return;
-
   }
 
+  /* =========================================================
+     4. MAIN REFERRAL FLOW
+  ========================================================= */
 
-  console.log(
-    "Referral code detected:",
-    referralCode
-  );
-
-
-  /*
-   * ==================================================
-   * 5. SAVE REFERRAL CODE
-   * ==================================================
-   */
-
-  localStorage.setItem(
-    "joyshop_referral_code",
-    referralCode
-  );
-
-
-  document.cookie =
-    "joyshop_referral=" +
-    encodeURIComponent(referralCode) +
-    "; path=/; max-age=2592000; SameSite=Lax";
-
-
-  /*
-   * ==================================================
-   * 6. CHECK SHOPIFY CUSTOMER LOGIN
-   * ==================================================
-   */
+  const params = new URLSearchParams(window.location.search);
+  const referralCodeFromUrl = params.get(REF_PARAM);
 
   const isLoggedIn =
     {% if customer %}
@@ -326,213 +190,84 @@
       false
     {% endif %};
 
+  async function handleReferral() {
 
-  console.log(
-    "Customer logged in:",
-    isLoggedIn
-  );
+    /* ----- Case A: ?ref= present in the URL ----- */
 
+    if (referralCodeFromUrl) {
+      console.log("JOYSHOP: Referral code detected:", referralCodeFromUrl);
 
-  /*
-   * ==================================================
-   * 7. CUSTOMER NOT LOGGED IN
-   * ==================================================
-   */
+      setReferralCookie(referralCodeFromUrl);
 
-  if (!isLoggedIn) {
+      /*
+       * Track the visit immediately, even before login,
+       * so we don't lose the visit if the customer abandons
+       * sign-up. If they're already logged in, this call
+       * also creates the Referral record server-side.
+       */
+      await trackReferralVisit(referralCodeFromUrl);
+
+      if (!isLoggedIn) {
+        redirectToSignIn();
+        return;
+      }
+
+      localStorage.setItem(LINKED_KEY, referralCodeFromUrl);
+      return;
+    }
+
+    /* ----- Case B: no ?ref=, but a cookie exists ----- */
+
+    const existingReferral = getReferralFromCookie();
+
+    if (!existingReferral) {
+      return;
+    }
+
+    const alreadyLinked = localStorage.getItem(LINKED_KEY);
+
+    if (alreadyLinked === existingReferral) {
+      return;
+    }
+
+    if (!isLoggedIn) {
+      /*
+       * Don't force a redirect on every single page view for
+       * an existing cookie visitor — only the initial ?ref=
+       * click forces sign-in. Once they choose to log in on
+       * their own, the block below links the referral.
+       */
+      return;
+    }
 
     console.log(
-      "Customer is NOT logged in."
+      "JOYSHOP: Logged-in customer with pending referral cookie:",
+      existingReferral
     );
 
+    const data = await trackReferralVisit(existingReferral);
 
-    /*
-     * Return to the current storefront page
-     * after Shopify authentication.
-     */
+    if (data && data.success) {
+      localStorage.setItem(LINKED_KEY, existingReferral);
+    }
+  }
 
+  function redirectToSignIn() {
     const returnTo =
-      window.location.pathname +
-      window.location.search;
-
+      window.location.pathname + window.location.search;
 
     const loginUrl =
-      "/customer_authentication/login?return_to=" +
-      encodeURIComponent(returnTo);
+      "/account/login?return_to=" + encodeURIComponent(returnTo);
 
+    console.log("JOYSHOP: Redirecting to sign in:", loginUrl);
 
-    console.log(
-      "Redirecting to Shopify customer authentication:"
-    );
-
-    console.log(
-      loginUrl
-    );
-
-
-    window.location.replace(
-      loginUrl
-    );
-
-    return;
-
+    window.location.replace(loginUrl);
   }
 
-
-  /*
-   * ==================================================
-   * 8. CUSTOMER IS LOGGED IN
-   * ==================================================
-   */
-
-  console.log(
-    "Customer is logged in."
-  );
-
-
-  /*
-   * ==================================================
-   * 9. PREVENT REPEATED LINKING
-   * ==================================================
-   */
-
-  const alreadyLinked =
-    localStorage.getItem(
-      "joyshop_referral_linked"
-    );
-
-
-  if (
-    alreadyLinked === referralCode
-  ) {
-
-    console.log(
-      "Referral already linked in this browser."
-    );
-
-    return;
-
-  }
-
-
-  /*
-   * ==================================================
-   * 10. SEND REFERRAL TO JOYSHOP BACKEND
-   * ==================================================
-   */
-
-  console.log(
-    "Sending referral to JOYSHOP..."
-  );
-
-
-  fetch(
-    "/apps/joyshop?ref=" +
-      encodeURIComponent(
-        referralCode
-      ),
-    {
-      method: "GET",
-
-      credentials: "include",
-
-      headers: {
-        "Accept": "application/json"
-      }
-    }
-  )
-
-    .then(
-      function (response) {
-
-        console.log(
-          "JOYSHOP response status:",
-          response.status
-        );
-
-
-        return response.json();
-
-      }
-    )
-
-    .then(
-      function (data) {
-
-        console.log(
-          "JOYSHOP referral response:",
-          data
-        );
-
-
-        if (data.success) {
-
-          console.log(
-            "========================================"
-          );
-
-          console.log(
-            "REFERRAL SUCCESSFULLY LINKED"
-          );
-
-          console.log(
-            "Referral Code:",
-            referralCode
-          );
-
-          console.log(
-            "Customer ID:",
-            data.customerId
-          );
-
-          console.log(
-            "Referral ID:",
-            data.referralId
-          );
-
-          console.log(
-            "========================================"
-          );
-
-
-          /*
-           * Remember that this referral
-           * was linked.
-           */
-
-          localStorage.setItem(
-            "joyshop_referral_linked",
-            referralCode
-          );
-
-
-        } else {
-
-          console.log(
-            "Referral linking failed:",
-            data.error
-          );
-
-        }
-
-      }
-    )
-
-    .catch(
-      function (error) {
-
-        console.error(
-          "JOYSHOP referral request failed:",
-          error
-        );
-
-      }
-    );
-
+  handleReferral();
 
 })();
 </script>
-
 
 {% schema %}
 {
