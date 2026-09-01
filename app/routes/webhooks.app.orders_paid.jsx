@@ -77,6 +77,12 @@ export const action = async ({ request }) => {
 
     /*
      * Order amount
+     *
+     * IMPORTANT:
+     * This is the amount of THIS order only — used both for
+     * commission calculation AND ambassador eligibility, since
+     * eligibility is based on a single qualifying order, not
+     * cumulative lifetime spend.
      */
 
     const orderAmount = Number(
@@ -111,10 +117,15 @@ export const action = async ({ request }) => {
     /*
      * =====================================================
      * 1. AMBASSADOR ELIGIBILITY
+     *
+     * Eligibility rule: a SINGLE order of ₹10,000 or more
+     * qualifies a customer to become an ambassador. This is
+     * checked against orderAmount (this order), NOT the
+     * customer's cumulative lifetime spend.
      * =====================================================
      */
 
-    if (customerId && admin) {
+    if (customerId) {
       try {
         /*
          * Load referral settings
@@ -145,174 +156,142 @@ export const action = async ({ request }) => {
             settings.ambassadorEligibilityAmount
           );
 
+        console.log(
+          "This order's amount:",
+          orderAmount
+        );
+
+        console.log(
+          "Ambassador eligibility threshold:",
+          eligibilityAmount
+        );
+
         /*
-         * Get customer's lifetime spending
-         * directly from Shopify.
+         * Check if customer is already ambassador
          */
 
-        const customerResponse =
-          await admin.graphql(
-            `#graphql
-            query GetCustomerSpend($id: ID!) {
-              customer(id: $id) {
-                id
-                firstName
-                lastName
-                email
-                phone
-                numberOfOrders
-                amountSpent {
-                  amount
-                  currencyCode
-                }
-              }
-            }`,
-            {
-              variables: {
-                id: customerGid(customerId),
+        const existingAmbassador =
+          await db.ambassador.findFirst({
+            where: {
+              shop,
+              customerId,
+            },
+          });
+
+        /*
+         * Determine eligibility based on THIS order alone.
+         */
+
+        const isEligible =
+          orderAmount >= eligibilityAmount;
+
+        /*
+         * Get existing eligibility record
+         */
+
+        const existingEligibility =
+          await db.ambassadorEligibility.findUnique({
+            where: {
+              shop_customerId: {
+                shop,
+                customerId,
               },
-            }
-          );
+            },
+          });
 
-        const customerResult =
-          await customerResponse.json();
+        /*
+         * Customer's order qualifies them
+         */
 
-        const customer =
-          customerResult?.data?.customer;
+        if (
+          isEligible &&
+          !existingAmbassador
+        ) {
+          await db.ambassadorEligibility.upsert({
+            where: {
+              shop_customerId: {
+                shop,
+                customerId,
+              },
+            },
 
-        if (customer) {
-          const totalSpent = Number(
-            customer.amountSpent?.amount || 0
+            update: {
+              eligible: true,
+              totalSpent: orderAmount,
+
+              /*
+               * Once eligible, stay eligible (until they
+               * join) — don't reset eligibleAt if they were
+               * already eligible from a previous order.
+               */
+              eligibleAt:
+                existingEligibility?.eligibleAt ||
+                new Date(),
+
+              /*
+               * A new qualifying order should trigger a
+               * fresh popup even if we'd already notified
+               * them once and they dismissed it.
+               */
+              notifiedAt: null,
+            },
+
+            create: {
+              shop,
+              customerId,
+              eligible: true,
+              totalSpent: orderAmount,
+              eligibleAt: new Date(),
+            },
+          });
+
+          console.log(
+            "🎉 CUSTOMER IS NOW ELIGIBLE (single order threshold met)"
           );
 
           console.log(
-            "Customer lifetime spend:",
-            totalSpent
+            "Customer ID:",
+            customerId
           );
 
           console.log(
-            "Ambassador eligibility:",
-            eligibilityAmount
+            "Qualifying order amount:",
+            orderAmount
           );
-
+        } else if (!existingAmbassador) {
           /*
-           * Check if customer is already ambassador
+           * Order didn't meet the threshold — keep the
+           * existing eligibility record's state as-is, or
+           * create a tracking record at eligible: false.
+           * We do NOT accumulate totalSpent across orders
+           * here, since eligibility is single-order based.
            */
 
-          const existingAmbassador =
-            await db.ambassador.findFirst({
-              where: {
+          await db.ambassadorEligibility.upsert({
+            where: {
+              shop_customerId: {
                 shop,
                 customerId,
               },
-            });
+            },
 
-          /*
-           * Determine eligibility
-           */
+            update: {
+              /*
+               * Preserve eligible: true if they already
+               * qualified from an earlier order.
+               */
+              eligible:
+                existingEligibility?.eligible || false,
+            },
 
-          const isEligible =
-            totalSpent >= eligibilityAmount;
-
-          /*
-           * Get existing eligibility record
-           */
-
-          const existingEligibility =
-            await db.ambassadorEligibility.findUnique({
-              where: {
-                shop_customerId: {
-                  shop,
-                  customerId,
-                },
-              },
-            });
-
-          /*
-           * Customer crossed threshold
-           */
-
-          if (
-            isEligible &&
-            !existingAmbassador
-          ) {
-            await db.ambassadorEligibility.upsert({
-              where: {
-                shop_customerId: {
-                  shop,
-                  customerId,
-                },
-              },
-
-              update: {
-                eligible: true,
-                totalSpent,
-                eligibleAt:
-                  existingEligibility?.eligibleAt ||
-                  new Date(),
-              },
-
-              create: {
-                shop,
-                customerId,
-                eligible: true,
-                totalSpent,
-                eligibleAt: new Date(),
-              },
-            });
-
-            console.log(
-              "🎉 CUSTOMER IS NOW ELIGIBLE"
-            );
-
-            console.log(
-              "Customer:",
-              customer.email
-            );
-
-            console.log(
-              "Total spent:",
-              totalSpent
-            );
-          } else {
-            /*
-             * Keep tracking spending even before
-             * eligibility is reached.
-             */
-
-            await db.ambassadorEligibility.upsert({
-              where: {
-                shop_customerId: {
-                  shop,
-                  customerId,
-                },
-              },
-
-              update: {
-                totalSpent,
-                eligible:
-                  isEligible ||
-                  existingEligibility?.eligible ||
-                  false,
-
-                eligibleAt:
-                  isEligible
-                    ? existingEligibility?.eligibleAt ||
-                      new Date()
-                    : existingEligibility?.eligibleAt,
-              },
-
-              create: {
-                shop,
-                customerId,
-                totalSpent,
-                eligible: isEligible,
-                eligibleAt: isEligible
-                  ? new Date()
-                  : null,
-              },
-            });
-          }
+            create: {
+              shop,
+              customerId,
+              totalSpent: orderAmount,
+              eligible: false,
+              eligibleAt: null,
+            },
+          });
         }
       } catch (eligibilityError) {
         /*

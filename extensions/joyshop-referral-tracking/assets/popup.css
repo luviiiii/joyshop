@@ -1,0 +1,292 @@
+/* =========================================================
+   JOYSHOP AMBASSADOR POPUP
+========================================================= */
+
+.joyshop-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+
+  background: rgba(20, 30, 20, 0.55);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 24px;
+}
+
+.joyshop-popup-overlay[hidden] {
+  display: none;
+}
+
+.joyshop-popup {
+  position: relative;
+
+  width: min(1000px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+
+  background: #fdf6e9;
+
+  border-radius: 20px;
+
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
+
+  animation: joyshopPopupIn 0.25s ease-out;
+}
+
+@keyframes joyshopPopupIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.joyshop-popup-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+
+  width: 40px;
+  height: 40px;
+
+  border: 0;
+  border-radius: 50%;
+
+  background: #ffffff;
+  color: #333;
+
+  font-size: 22px;
+  line-height: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.joyshop-popup-close:hover {
+  background: #f0f0f0;
+}
+
+.joyshop-popup-inner {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+
+  min-height: 480px;
+}
+
+.joyshop-popup-left {
+  padding: 48px 44px;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.joyshop-popup-logo {
+  margin-bottom: 28px;
+}
+
+.joyshop-popup-logo img {
+  max-height: 44px;
+  width: auto;
+}
+
+.joyshop-popup-logo strong {
+  font-size: 20px;
+  color: #1a3a24;
+  font-weight: 800;
+}
+
+.joyshop-popup-eyebrow {
+  margin: 0;
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+
+  color: #d97706;
+
+  font-size: 26px;
+}
+
+.joyshop-popup-heading {
+  margin: 4px 0 16px;
+
+  color: #14532d;
+
+  font-size: 42px;
+  line-height: 1.1;
+  font-weight: 800;
+}
+
+.joyshop-popup-subtext {
+  margin: 0 0 24px;
+
+  color: #4b5a4f;
+
+  font-size: 15px;
+  line-height: 1.6;
+
+  max-width: 420px;
+}
+
+.joyshop-popup-benefits {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+
+  margin-bottom: 28px;
+}
+
+.joyshop-popup-benefit {
+  background: #ffffff;
+
+  border-radius: 12px;
+
+  padding: 16px 12px;
+
+  text-align: center;
+
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2d22;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.joyshop-popup-benefit-icon {
+  width: 42px;
+  height: 42px;
+
+  border-radius: 50%;
+
+  background: #14532d;
+  color: #ffffff;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.joyshop-popup-join-btn {
+  border: 0;
+  border-radius: 10px;
+
+  background: #14532d;
+  color: #ffffff;
+
+  padding: 16px;
+
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+
+  cursor: pointer;
+
+  transition: background 0.2s ease;
+}
+
+.joyshop-popup-join-btn:hover:not(:disabled) {
+  background: #0d3b1f;
+}
+
+.joyshop-popup-join-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.joyshop-popup-later-btn {
+  border: 0;
+  background: transparent;
+
+  color: #4b5a4f;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  padding: 14px;
+
+  cursor: pointer;
+}
+
+.joyshop-popup-later-btn:hover {
+  color: #14532d;
+  text-decoration: underline;
+}
+
+.joyshop-popup-right {
+  position: relative;
+
+  background: #f0e6cc;
+}
+
+.joyshop-popup-image {
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+}
+
+.joyshop-popup-message {
+  margin: 4px 0 0;
+
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.joyshop-popup-success {
+  color: #14532d;
+  font-weight: 600;
+}
+
+.joyshop-popup-error {
+  color: #c62828;
+  font-weight: 600;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 800px) {
+  .joyshop-popup-inner {
+    grid-template-columns: 1fr;
+  }
+
+  .joyshop-popup-right {
+    display: none;
+  }
+
+  .joyshop-popup-left {
+    padding: 40px 28px;
+  }
+
+  .joyshop-popup-heading {
+    font-size: 32px;
+  }
+
+  .joyshop-popup-benefits {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .joyshop-popup-benefits {
+    grid-template-columns: 1fr;
+  }
+}

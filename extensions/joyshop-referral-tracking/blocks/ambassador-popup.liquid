@@ -1,0 +1,101 @@
+{% comment %}
+  JOYSHOP Ambassador Popup
+
+  Shown to eligible customers (checked server-side via the
+  /apps/joyshop/eligibility endpoint) inviting them to join
+  the ambassador program.
+
+  Does NOT expose any Admin API tokens or database credentials.
+  All eligibility logic happens server-side in
+  apps.joyshop.eligibility.jsx and apps.joyshop.become-ambassador.jsx.
+{% endcomment %}
+
+<div id="joyshop-ambassador-popup" class="joyshop-popup-overlay" hidden>
+  <div class="joyshop-popup" role="dialog" aria-modal="true" aria-labelledby="joyshop-popup-heading">
+
+    <button type="button" class="joyshop-popup-close" id="joyshop-popup-close" aria-label="Close">
+      &times;
+    </button>
+
+    <div class="joyshop-popup-inner">
+
+      <div class="joyshop-popup-left">
+
+        {% comment %} LOGO — replace with your theme's logo asset {% endcomment %}
+        <div class="joyshop-popup-logo">
+          {% if settings.logo %}
+            <img src="{{ settings.logo | image_url: width: 200 }}" alt="{{ shop.name }}" />
+          {% else %}
+            <!-- TODO: drop in logo, e.g. {{logo.jpeg}} -->
+            <strong>{{ shop.name }}</strong>
+          {% endif %}
+        </div>
+
+        <p class="joyshop-popup-eyebrow">Join Our</p>
+
+        <h2 id="joyshop-popup-heading" class="joyshop-popup-heading">
+          Ambassador<br />Program
+        </h2>
+
+        <p class="joyshop-popup-subtext">
+          Share {{ shop.name }} with your network and earn rewards for
+          every referral.
+        </p>
+
+        <div class="joyshop-popup-benefits">
+
+          <div class="joyshop-popup-benefit">
+            <div class="joyshop-popup-benefit-icon">₹</div>
+            <span id="joyshop-popup-commission-text">Earn up to 10% Commission</span>
+          </div>
+
+          <div class="joyshop-popup-benefit">
+            <div class="joyshop-popup-benefit-icon">🎁</div>
+            <span>Exclusive Rewards</span>
+          </div>
+
+          <div class="joyshop-popup-benefit">
+            <div class="joyshop-popup-benefit-icon">👥</div>
+            <span>Be a Part of Our Wellness Family</span>
+          </div>
+
+        </div>
+
+        <button type="button" class="joyshop-popup-join-btn" id="joyshop-popup-join-btn">
+          Join Now
+        </button>
+
+        <button type="button" class="joyshop-popup-later-btn" id="joyshop-popup-later-btn">
+          Maybe Later
+        </button>
+
+        <p class="joyshop-popup-message" id="joyshop-popup-message"></p>
+
+      </div>
+
+      <div class="joyshop-popup-right">
+        {% comment %} IMAGE — replace with your product/tote bag image {% endcomment %}
+        <!-- TODO: drop in image, e.g. {{ 'ambassador-hero.jpg' | asset_url }} -->
+        <img
+          src="{{ 'ambassador-hero.jpg' | asset_url }}"
+          alt="Just Organik products"
+          class="joyshop-popup-image"
+          onerror="this.style.display='none'"
+        />
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<script src="{{ 'popup.js' | asset_url }}" defer></script>
+<link rel="stylesheet" href="{{ 'popup.css' | asset_url }}">
+
+{% schema %}
+{
+  "name": "Ambassador Popup",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

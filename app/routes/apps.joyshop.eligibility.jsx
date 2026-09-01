@@ -79,6 +79,21 @@ export const loader = async ({ request }) => {
     }
 
     /*
+     * Load the current commission rate so the popup can
+     * display the real number instead of a hardcoded value.
+     */
+
+    const settings =
+      await db.referralSettings.findUnique({
+        where: {
+          shop,
+        },
+      });
+
+    const commissionRate =
+      settings?.commissionRate ?? 10;
+
+    /*
      * Mark notification as shown.
      */
 
@@ -95,6 +110,7 @@ export const loader = async ({ request }) => {
     return Response.json({
       eligible: true,
       totalSpent: eligibility.totalSpent,
+      commissionRate,
     });
   } catch (error) {
     console.error(
