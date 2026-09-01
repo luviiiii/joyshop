@@ -153,11 +153,11 @@ export default function AdminDashboard() {
           </s-text>
 
           <s-stack direction="inline" gap="base">
-            <s-button variant="primary">
+            <s-button variant="primary" href="/app/ambassadors">
               Manage Ambassadors
             </s-button>
 
-            <s-button>
+            <s-button href="/app/settings">
               Referral Settings
             </s-button>
           </s-stack>
@@ -493,7 +493,7 @@ export default function AdminDashboard() {
                 View and manage all ambassadors.
               </s-text>
 
-              <s-button>
+              <s-button href="/app/ambassadors">
                 View Ambassadors
               </s-button>
             </s-stack>
@@ -507,7 +507,7 @@ export default function AdminDashboard() {
                 See customers who joined through referrals.
               </s-text>
 
-              <s-button>
+              <s-button href="/app/referrals">
                 View Referrals
               </s-button>
             </s-stack>
@@ -521,7 +521,7 @@ export default function AdminDashboard() {
                 Change credit, commission and referral rules.
               </s-text>
 
-              <s-button>
+              <s-button href="/app/settings">
                 Open Settings
               </s-button>
             </s-stack>
