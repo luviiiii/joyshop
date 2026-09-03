@@ -1,5 +1,5 @@
 /* =========================================================
-   JOYSHOP AMBASSADOR POPUP
+   STEP 1: ELIGIBILITY POPUP
 ========================================================= */
 
 .joyshop-popup-overlay {
@@ -205,11 +205,6 @@
   background: #0d3b1f;
 }
 
-.joyshop-popup-join-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
 .joyshop-popup-later-btn {
   border: 0;
   background: transparent;
@@ -259,10 +254,6 @@
   font-weight: 600;
 }
 
-/* =========================================================
-   RESPONSIVE
-========================================================= */
-
 @media (max-width: 800px) {
   .joyshop-popup-inner {
     grid-template-columns: 1fr;
@@ -288,5 +279,379 @@
 @media (max-width: 520px) {
   .joyshop-popup-benefits {
     grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   STEP 2: BENEFITS + TERMS POPUP
+========================================================= */
+
+.joyshop-terms-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+
+  background: rgba(20, 30, 20, 0.55);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 24px;
+}
+
+.joyshop-terms-overlay[hidden] {
+  display: none;
+}
+
+.joyshop-terms-modal {
+  position: relative;
+
+  width: min(880px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+
+  background: #ffffff;
+
+  border-radius: 20px;
+
+  padding: 48px 50px 40px;
+
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
+
+  animation: joyshopPopupIn 0.25s ease-out;
+}
+
+.joyshop-terms-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+
+  width: 40px;
+  height: 40px;
+
+  border: 1px solid #e4e9e5;
+  border-radius: 50%;
+
+  background: #ffffff;
+  color: #333;
+
+  font-size: 20px;
+  line-height: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.joyshop-terms-close:hover {
+  background: #f0f0f0;
+}
+
+.joyshop-terms-back {
+  position: absolute;
+  top: 50%;
+  left: -20px;
+  transform: translateY(-50%);
+  z-index: 2;
+
+  width: 44px;
+  height: 44px;
+
+  border: 0;
+  border-radius: 50%;
+
+  background: #14532d;
+  color: #ffffff;
+
+  font-size: 18px;
+  line-height: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.joyshop-terms-back:hover {
+  background: #0d3b1f;
+}
+
+.joyshop-terms-heading {
+  margin: 6px 46px 28px 0;
+
+  color: #14532d;
+
+  font-size: 26px;
+  line-height: 1.35;
+  font-weight: 700;
+
+  text-align: center;
+}
+
+.joyshop-terms-heading span {
+  color: #14532d;
+  font-weight: 800;
+}
+
+.joyshop-terms-benefits {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+
+  margin-bottom: 34px;
+}
+
+.joyshop-terms-benefit {
+  background: #f5faf6;
+
+  border-radius: 14px;
+
+  padding: 22px 14px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+
+  text-align: center;
+
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2d22;
+}
+
+.joyshop-terms-benefit-icon {
+  width: 56px;
+  height: 56px;
+
+  border-radius: 50%;
+
+  background: #e5f2e7;
+  color: #14532d;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joyshop-terms-benefit-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.joyshop-terms-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+
+  margin-bottom: 18px;
+}
+
+.joyshop-terms-divider h3 {
+  margin: 0;
+
+  color: #14532d;
+
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.joyshop-terms-divider::before,
+.joyshop-terms-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #d7e4da;
+  max-width: 140px;
+}
+
+.joyshop-terms-box {
+  height: 220px;
+  overflow-y: auto;
+
+  border: 1px solid #cfe0d3;
+  border-radius: 12px;
+
+  padding: 20px 22px;
+
+  margin-bottom: 18px;
+
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #2c362f;
+}
+
+/* Highlight bullets shown at the top of the terms box */
+
+.joyshop-terms-box .joyshop-terms-highlights {
+  margin: 0 0 18px;
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.joyshop-terms-box .joyshop-terms-highlights li {
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #14532d;
+}
+
+.joyshop-terms-box hr {
+  border: 0;
+  border-top: 1px solid #e2e9e4;
+  margin: 4px 0 20px;
+}
+
+.joyshop-terms-box h4 {
+  margin: 22px 0 8px;
+
+  color: #14532d;
+
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.joyshop-terms-box h4:first-of-type {
+  margin-top: 0;
+}
+
+.joyshop-terms-box p {
+  margin: 0 0 10px;
+}
+
+.joyshop-terms-box ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.joyshop-terms-box ul li {
+  margin-bottom: 6px;
+}
+
+.joyshop-terms-box strong {
+  color: #1f2d22;
+}
+
+.joyshop-terms-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  margin: 4px 0 14px;
+
+  font-size: 13px;
+}
+
+.joyshop-terms-table th,
+.joyshop-terms-table td {
+  border: 1px solid #dbe6dd;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.joyshop-terms-table th {
+  background: #f0f8f2;
+  color: #14532d;
+  font-weight: 700;
+}
+
+.joyshop-terms-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  margin-bottom: 22px;
+
+  font-size: 14px;
+  color: #2c362f;
+
+  cursor: pointer;
+}
+
+.joyshop-terms-checkbox-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+
+  accent-color: #14532d;
+
+  cursor: pointer;
+}
+
+.joyshop-terms-checkbox-row input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.joyshop-terms-cta {
+  width: 100%;
+
+  border: 0;
+  border-radius: 50px;
+
+  background: #14532d;
+  color: #ffffff;
+
+  padding: 16px;
+
+  font-size: 15px;
+  font-weight: 700;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  cursor: pointer;
+
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.joyshop-terms-cta-icon {
+  font-size: 16px;
+}
+
+.joyshop-terms-cta-arrow {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.joyshop-terms-cta:hover:not(:disabled) {
+  background: #0d3b1f;
+}
+
+.joyshop-terms-cta:disabled {
+  background: #9fb5a5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 800px) {
+  .joyshop-terms-modal {
+    padding: 40px 24px 32px;
+  }
+
+  .joyshop-terms-back {
+    left: 10px;
+    top: 16px;
+    transform: none;
+  }
+
+  .joyshop-terms-benefits {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .joyshop-terms-benefits {
+    grid-template-columns: 1fr;
+  }
+
+  .joyshop-terms-table {
+    font-size: 12px;
   }
 }

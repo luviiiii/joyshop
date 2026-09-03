@@ -1,14 +1,20 @@
 {% comment %}
   JOYSHOP Ambassador Popup
 
-  Shown to eligible customers (checked server-side via the
-  /apps/joyshop/eligibility endpoint) inviting them to join
-  the ambassador program.
-
-  Does NOT expose any Admin API tokens or database credentials.
-  All eligibility logic happens server-side in
-  apps.joyshop.eligibility.jsx and apps.joyshop.become-ambassador.jsx.
+  Two-step flow:
+  1. Eligibility popup ("Know More" button)
+  2. Benefits + Terms & Conditions popup
+     - Checkbox stays disabled until the person scrolls the
+       Terms box all the way to the bottom.
+     - "I'm Interested" stays disabled until the checkbox is
+       checked.
+     - Clicking "I'm Interested" sends the person to the
+       application page (PAN/Aadhaar form).
 {% endcomment %}
+
+<!-- =========================================================
+     STEP 1: ELIGIBILITY POPUP
+========================================================= -->
 
 <div id="joyshop-ambassador-popup" class="joyshop-popup-overlay" hidden>
   <div class="joyshop-popup" role="dialog" aria-modal="true" aria-labelledby="joyshop-popup-heading">
@@ -21,12 +27,11 @@
 
       <div class="joyshop-popup-left">
 
-        {% comment %} LOGO — replace with your theme's logo asset {% endcomment %}
         <div class="joyshop-popup-logo">
           {% if settings.logo %}
             <img src="{{ settings.logo | image_url: width: 200 }}" alt="{{ shop.name }}" />
           {% else %}
-            <!-- TODO: drop in logo, e.g. {{logo.jpeg}} -->
+            <!-- TODO: drop in logo, e.g. {{ 'logo.png' | asset_url }} -->
             <strong>{{ shop.name }}</strong>
           {% endif %}
         </div>
@@ -46,7 +51,7 @@
 
           <div class="joyshop-popup-benefit">
             <div class="joyshop-popup-benefit-icon">₹</div>
-            <span id="joyshop-popup-commission-text">Earn up to 10% Commission</span>
+            <span id="joyshop-popup-commission-text">Earn up to 15% Commission</span>
           </div>
 
           <div class="joyshop-popup-benefit">
@@ -61,8 +66,8 @@
 
         </div>
 
-        <button type="button" class="joyshop-popup-join-btn" id="joyshop-popup-join-btn">
-          Join Now
+        <button type="button" class="joyshop-popup-join-btn" id="joyshop-popup-know-more-btn">
+          Know More
         </button>
 
         <button type="button" class="joyshop-popup-later-btn" id="joyshop-popup-later-btn">
@@ -74,7 +79,6 @@
       </div>
 
       <div class="joyshop-popup-right">
-        {% comment %} IMAGE — replace with your product/tote bag image {% endcomment %}
         <!-- TODO: drop in image, e.g. {{ 'ambassador-hero.jpg' | asset_url }} -->
         <img
           src="{{ 'ambassador-hero.jpg' | asset_url }}"
@@ -85,6 +89,363 @@
       </div>
 
     </div>
+
+  </div>
+</div>
+
+<!-- =========================================================
+     STEP 2: BENEFITS + TERMS POPUP
+========================================================= -->
+
+<div id="joyshop-terms-popup" class="joyshop-terms-overlay" hidden>
+  <div class="joyshop-terms-modal" role="dialog" aria-modal="true" aria-labelledby="joyshop-terms-heading">
+
+    <button type="button" class="joyshop-terms-back" id="joyshop-terms-back" aria-label="Back">
+      &larr;
+    </button>
+
+    <button type="button" class="joyshop-terms-close" id="joyshop-terms-close" aria-label="Close">
+      &times;
+    </button>
+
+    <h2 id="joyshop-terms-heading" class="joyshop-terms-heading">
+      Benefits of becoming the <span>Joyshop Ambassador</span> :
+    </h2>
+
+    <div class="joyshop-terms-benefits">
+
+      <div class="joyshop-terms-benefit">
+        <div class="joyshop-terms-benefit-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="8" cy="8" r="5"/>
+            <circle cx="12" cy="14" r="5"/>
+          </svg>
+        </div>
+        <span>Earn attractive commissions</span>
+      </div>
+
+      <div class="joyshop-terms-benefit">
+        <div class="joyshop-terms-benefit-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="4" y="9" width="16" height="11" rx="1.5"/>
+            <path d="M4 9h16v3H4z" fill="currentColor" stroke="none"/>
+            <path d="M12 9v11M8.5 9c-2-2.5-1-6 1-6 1.5 0 2.5 3 2.5 6M15.5 9c2-2.5 1-6-1-6-1.5 0-2.5 3-2.5 6"/>
+          </svg>
+        </div>
+        <span>Get exclusive offers &amp; rewards</span>
+      </div>
+
+      <div class="joyshop-terms-benefit">
+        <div class="joyshop-terms-benefit-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M3 11l16-6-6 16-3-7-7-3z"/>
+          </svg>
+        </div>
+        <span>Be part of a growing healthy community</span>
+      </div>
+
+      <div class="joyshop-terms-benefit">
+        <div class="joyshop-terms-benefit-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M4 13a8 8 0 0 1 16 0"/>
+            <rect x="3" y="13" width="4" height="6" rx="1.5"/>
+            <rect x="17" y="13" width="4" height="6" rx="1.5"/>
+          </svg>
+        </div>
+        <span>Prioritize customer support</span>
+      </div>
+
+    </div>
+
+    <div class="joyshop-terms-divider">
+      <span>🌿</span>
+      <h3>Terms &amp; Conditions</h3>
+      <span>🌿</span>
+    </div>
+
+    <div class="joyshop-terms-box" id="joyshop-terms-box">
+
+      <ul class="joyshop-terms-highlights">
+        <li>Earn up to 15% rewards on qualifying referred sales.</li>
+        <li>Give your referrals ₹200 welcome credit on their first qualifying order.</li>
+        <li>Earn by sharing your unique referral link/code with your community.</li>
+        <li>Enjoy JOY Privileged Customer benefits while being an Ambassador.</li>
+        <li>Be part of the Just Organik community and help others discover genuine organic products.</li>
+      </ul>
+
+      <hr />
+
+      <h4>JOY AMBASSADOR PROGRAMME</h4>
+
+      <p>
+        <strong>JOY stands for Just Organik &amp; You.</strong>
+      </p>
+
+      <p>
+        The JOY Ambassador Programme is operated by Treta Agro Pvt. Ltd.
+        (Just Organik) through justorganik.com.
+      </p>
+
+      <p>
+        By registering for or participating in the Programme, you agree
+        to these Terms &amp; Conditions and the applicable Website
+        policies.
+      </p>
+
+      <h4>1. Why Become a JOY Ambassador?</h4>
+
+      <p><strong>Earn up to 15%</strong> &mdash; Earn monthly rewards on qualifying referred sales, based on the applicable reward slab.</p>
+
+      <p><strong>Give ₹200 to Your Referrals</strong> &mdash; A new customer may receive ₹200 cash credit on their first qualifying order of ₹1,500 or more through your referral link/code.</p>
+
+      <p><strong>Share Your Personal Referral Link</strong> &mdash; Get your own unique referral link/code and share it with your genuine personal, social or professional community.</p>
+
+      <p><strong>Enjoy JOY Privileged Benefits</strong> &mdash; Continue to enjoy applicable JOY Privileged Customer benefits while participating as an Ambassador.</p>
+
+      <p><strong>Grow Through Genuine Recommendations</strong> &mdash; Help your community discover genuine Just Organik products by sharing, educating and recommending responsibly.</p>
+
+      <h4>2. Who Can Become an Ambassador?</h4>
+
+      <p>To become a JOY Ambassador, you must:</p>
+
+      <ul>
+        <li>Be 18 years or older;</li>
+        <li>Be legally competent to enter into an agreement;</li>
+        <li>Qualify as a JOY Privileged Customer;</li>
+        <li>Complete the required registration;</li>
+        <li>Accept these Terms;</li>
+        <li>Provide required KYC and bank details; and</li>
+        <li>Meet any qualifying purchase or other conditions specified by Just Organik.</li>
+      </ul>
+
+      <p>Approval as an Ambassador is subject to verification and approval by Just Organik.</p>
+
+      <h4>3. How Does the Referral Programme Work?</h4>
+
+      <p>Once approved, you will receive a unique referral link and/or referral code.</p>
+
+      <p>You may share your referral link/code with people in your genuine personal, social or professional community.</p>
+
+      <p>A referral will qualify when:</p>
+
+      <ul>
+        <li>A new customer uses your valid referral link/code while registering or purchasing;</li>
+        <li>The customer meets the applicable conditions; and</li>
+        <li>The resulting order is successfully completed and is not cancelled, returned, refunded, reversed or otherwise disqualified.</li>
+      </ul>
+
+      <p>Just Organik's records will determine referral attribution, subject to correction of demonstrable technical errors.</p>
+
+      <h4>4. Benefit for Your Referred Customer</h4>
+
+      <p>A qualifying new customer may receive ₹200 cash credit on their first qualifying order.</p>
+
+      <p>The ₹200 credit:</p>
+
+      <ul>
+        <li>Requires a minimum first-order value of ₹1,500;</li>
+        <li>Applies only to the first qualifying order;</li>
+        <li>Cannot be exchanged for cash;</li>
+        <li>Cannot be transferred; and</li>
+        <li>Cannot be combined with another referral benefit unless permitted by Just Organik.</li>
+      </ul>
+
+      <p>Just Organik will determine what qualifies as a "new customer" and "qualifying order."</p>
+
+      <h4>5. Ambassador Reward</h4>
+
+      <p>Eligible Ambassadors can earn monthly rewards based on qualifying completed referred sales generated through their referral link/code.</p>
+
+      <table class="joyshop-terms-table">
+        <thead>
+          <tr>
+            <th>Monthly Referred Sales</th>
+            <th>Reward</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Up to ₹30,000</td>
+            <td>7%</td>
+          </tr>
+          <tr>
+            <td>₹30,001 &ndash; ₹60,000</td>
+            <td>10%</td>
+          </tr>
+          <tr>
+            <td>Above ₹60,000</td>
+            <td>15%</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>Rewards are calculated on qualifying completed referred sales recorded in Just Organik's systems.</p>
+
+      <p>Cancelled, returned, refunded, reversed, fraudulent, unpaid or otherwise disqualified transactions will not qualify.</p>
+
+      <p>If a reward has already been paid and the related transaction is later cancelled, refunded, returned, reversed or found to be ineligible, Just Organik may adjust or recover the applicable amount from future rewards.</p>
+
+      <p><strong>Applicable TDS, currently 2%, will be deducted from payouts.</strong></p>
+
+      <h4>6. Ambassador Qualification</h4>
+
+      <p>To remain eligible for monthly Ambassador rewards, you must make Just Organik purchases having an aggregate value of at least ₹5,000 at MRP during the preceding three months.</p>
+
+      <p>The ₹5,000 requirement may be fulfilled through multiple orders/invoices.</p>
+
+      <p>Only completed and non-cancelled/non-refunded purchases will be considered.</p>
+
+      <p>If you do not meet the requirement:</p>
+
+      <ul>
+        <li>Your JOY Privileged Customer benefits may continue, subject to their applicable terms;</li>
+        <li>You will not be eligible for Ambassador monthly rewards until the qualifying requirement is met; and</li>
+        <li>No Ambassador reward will accrue for the period during which the requirement is not satisfied.</li>
+      </ul>
+
+      <p>If the qualifying purchase requirement is not met during the next consecutive three-month period, Ambassador participation may be discontinued.</p>
+
+      <h4>7. What Ambassadors Can Do</h4>
+
+      <p>Ambassadors may:</p>
+
+      <ul>
+        <li>Share their unique referral link/code;</li>
+        <li>Recommend Just Organik products;</li>
+        <li>Educate their community about Just Organik products and the Programme;</li>
+        <li>Use Programme-approved marketing material; and</li>
+        <li>Introduce potential customers to Just Organik.</li>
+      </ul>
+
+      <p>Ambassadors are expected to educate, share and recommend &mdash; not aggressively sell.</p>
+
+      <h4>8. What Ambassadors Must Not Do</h4>
+
+      <p>Ambassadors must not:</p>
+
+      <ul>
+        <li>Refer themselves to generate rewards;</li>
+        <li>Create multiple accounts to obtain additional benefits;</li>
+        <li>Create false, artificial or fraudulent orders;</li>
+        <li>Manipulate referral attribution;</li>
+        <li>Offer unauthorised discounts or incentives;</li>
+        <li>Make false, exaggerated or misleading product claims;</li>
+        <li>Make unauthorised medical, therapeutic or disease-related claims;</li>
+        <li>Misrepresent discounts, rewards or Programme benefits;</li>
+        <li>Represent themselves as an employee, partner, franchisee, owner or authorised representative of Just Organik;</li>
+        <li>Use Just Organik trademarks or marketing material without authorisation;</li>
+        <li>Use paid advertising containing Just Organik trademarks or brand terms without prior written approval;</li>
+        <li>Spam WhatsApp groups, email lists, social-media groups or other communities; or</li>
+        <li>Engage in any activity that may damage the reputation of Just Organik or the JOY Programme.</li>
+      </ul>
+
+      <h4>9. Customer Orders</h4>
+
+      <p>Ambassadors introduce and recommend products; they do not independently sell or distribute Just Organik products unless separately authorised.</p>
+
+      <p>Customers place their orders directly through the Website or another ordering mechanism provided by Just Organik.</p>
+
+      <p>Pricing, payment, delivery, cancellation, returns and refunds are governed by the applicable Website policies.</p>
+
+      <p>Ambassadors cannot modify these policies or make commitments on behalf of Just Organik.</p>
+
+      <h4>10. KYC, Banking &amp; Tax</h4>
+
+      <p>Ambassadors must provide accurate and current KYC, banking and tax information.</p>
+
+      <p>Just Organik may request additional documentation where required.</p>
+
+      <p>Payments will be made to the registered and verified bank account of the Ambassador.</p>
+
+      <p>The Ambassador is responsible for their own applicable tax obligations.</p>
+
+      <p>Statutory deductions, including TDS where applicable, may be deducted before payment.</p>
+
+      <h4>11. No Guarantee of Income</h4>
+
+      <p>The JOY Ambassador Programme does not guarantee any minimum income, sales, referrals or monthly reward.</p>
+
+      <p>Actual rewards depend on qualifying purchases made by referred customers.</p>
+
+      <p>Any earning examples or illustrations shown by Just Organik are for illustration only and do not constitute a guarantee of earnings.</p>
+
+      <h4>12. Referral Code &amp; Intellectual Property</h4>
+
+      <p>Your referral link/code is personal to you and must not be sold, transferred or used by another Ambassador.</p>
+
+      <p>All Just Organik trademarks, logos, product names, photographs, designs, videos and other intellectual property remain the property of Just Organik or its licensors.</p>
+
+      <p>Ambassadors may use only Programme-approved marketing material and must follow applicable brand guidelines.</p>
+
+      <h4>13. Privacy</h4>
+
+      <p>Personal information collected during registration, KYC, ordering, referral tracking and payout processing will be handled in accordance with Just Organik's Privacy Policy and applicable law.</p>
+
+      <p>Ambassadors must respect customer privacy and must not use or share customer information for unrelated marketing or commercial purposes.</p>
+
+      <h4>14. Suspension or Termination</h4>
+
+      <p>Just Organik may suspend or terminate an Ambassador's participation if the Ambassador:</p>
+
+      <ul>
+        <li>Breaches these Terms;</li>
+        <li>Engages in fraudulent or abusive activity;</li>
+        <li>Provides false or misleading information;</li>
+        <li>Fails to complete required KYC;</li>
+        <li>Misuses the referral link/code;</li>
+        <li>Violates applicable law; or</li>
+        <li>Engages in conduct that may damage the Just Organik brand.</li>
+      </ul>
+
+      <p>Just Organik may withhold or cancel rewards connected with fraudulent, disputed or otherwise ineligible transactions.</p>
+
+      <p>The Programme may also be modified, suspended or discontinued by Just Organik.</p>
+
+      <h4>15. No Employment or Agency</h4>
+
+      <p>Being a JOY Ambassador does not create an employment, partnership, joint venture, franchise or agency relationship with Just Organik.</p>
+
+      <p>An Ambassador participates independently and must not represent otherwise to any customer or third party.</p>
+
+      <h4>16. Programme Changes</h4>
+
+      <p>Just Organik may modify Programme rules, including eligibility, customer benefits, referral benefits, reward percentages, qualifying requirements, payout cycles and product eligibility.</p>
+
+      <p>Material changes may be communicated through the Website, email, Ambassador account or other appropriate channels.</p>
+
+      <p>Continued participation after a change takes effect constitutes acceptance of the revised Terms.</p>
+
+      <h4>17. Governing Law &amp; Disputes</h4>
+
+      <p>These Terms are governed by the laws of India.</p>
+
+      <p>Any dispute will first be attempted to be resolved amicably.</p>
+
+      <p>If a dispute cannot be resolved amicably, it will be subject to the jurisdiction of the courts at Gurugram, Haryana, India, unless otherwise required by applicable law.</p>
+
+      <h4>18. Acceptance</h4>
+
+      <p>By registering for the JOY Ambassador Programme, you confirm that:</p>
+
+      <ul>
+        <li>You have read and understood these Terms;</li>
+        <li>The information provided by you is accurate;</li>
+        <li>You agree to comply with the Programme rules; and</li>
+        <li>You understand that rewards depend on qualifying referred sales and are not guaranteed.</li>
+      </ul>
+
+    </div>
+
+    <label class="joyshop-terms-checkbox-row">
+      <input type="checkbox" id="joyshop-terms-checkbox" disabled />
+      <span>I accept the Terms &amp; Conditions</span>
+    </label>
+
+    <button type="button" class="joyshop-terms-cta" id="joyshop-terms-cta" disabled>
+      <span class="joyshop-terms-cta-icon">🌿</span>
+      I'm Interested
+      <span class="joyshop-terms-cta-arrow">&rsaquo;</span>
+    </button>
 
   </div>
 </div>

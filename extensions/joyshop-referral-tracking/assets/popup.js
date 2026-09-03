@@ -4,10 +4,12 @@
  * - Calls the JOYSHOP app proxy to check eligibility server-side.
  * - Never trusts browser-supplied spend amounts.
  * - No Admin API tokens or database credentials ever touch this file.
- * - Shows the popup once per eligible customer (server marks
- *   notifiedAt so a repeat check returns eligible: false).
- * - "Join Now" sends the customer to the ambassador application
- *   page, where they submit details + PAN/Aadhaar for manual review.
+ * - Shows the eligibility popup once per eligible customer.
+ * - "Know More" opens a second popup with benefits + terms.
+ * - The terms checkbox stays disabled until the person scrolls
+ *   the terms box to the bottom.
+ * - "I'm Interested" stays disabled until the checkbox is
+ *   checked, then sends the person to the application page.
  */
 
 (function () {
@@ -22,26 +24,42 @@
    */
   const APPLICATION_PAGE_URL = "/pages/become-an-ambassador";
 
-  function getElements() {
+  /*
+   * How close to the bottom (in px) counts as "scrolled to
+   * the end" for the terms box.
+   */
+  const SCROLL_THRESHOLD_PX = 8;
+
+  function getStepOneElements() {
     return {
       overlay: document.getElementById("joyshop-ambassador-popup"),
       closeBtn: document.getElementById("joyshop-popup-close"),
-      joinBtn: document.getElementById("joyshop-popup-join-btn"),
+      knowMoreBtn: document.getElementById("joyshop-popup-know-more-btn"),
       laterBtn: document.getElementById("joyshop-popup-later-btn"),
-      message: document.getElementById("joyshop-popup-message"),
       commissionText: document.getElementById(
         "joyshop-popup-commission-text"
       ),
     };
   }
 
-  function showPopup(elements) {
-    elements.overlay.hidden = false;
+  function getStepTwoElements() {
+    return {
+      overlay: document.getElementById("joyshop-terms-popup"),
+      closeBtn: document.getElementById("joyshop-terms-close"),
+      backBtn: document.getElementById("joyshop-terms-back"),
+      termsBox: document.getElementById("joyshop-terms-box"),
+      checkbox: document.getElementById("joyshop-terms-checkbox"),
+      ctaBtn: document.getElementById("joyshop-terms-cta"),
+    };
+  }
+
+  function showOverlay(overlay) {
+    overlay.hidden = false;
     document.body.style.overflow = "hidden";
   }
 
-  function hidePopup(elements) {
-    elements.overlay.hidden = true;
+  function hideOverlay(overlay) {
+    overlay.hidden = true;
     document.body.style.overflow = "";
   }
 
@@ -72,16 +90,83 @@
     elements.commissionText.textContent = `Earn up to ${rate}% Commission`;
   }
 
-  async function init() {
-    const elements = getElements();
+  function setupTermsScrollGate(stepTwo) {
+    if (!stepTwo.termsBox || !stepTwo.checkbox) return;
 
-    if (!elements.overlay) {
-      return;
+    function checkScrollPosition() {
+      const box = stepTwo.termsBox;
+
+      const scrolledToBottom =
+        box.scrollTop + box.clientHeight >=
+        box.scrollHeight - SCROLL_THRESHOLD_PX;
+
+      if (scrolledToBottom) {
+        stepTwo.checkbox.disabled = false;
+      }
     }
 
     /*
-     * Only ever attempt this once per browser session so we
-     * don't spam the eligibility endpoint on every page view.
+     * If the terms content is short enough that there's
+     * nothing to scroll, unlock immediately.
+     */
+    if (stepTwo.termsBox.scrollHeight <= stepTwo.termsBox.clientHeight) {
+      stepTwo.checkbox.disabled = false;
+    }
+
+    stepTwo.termsBox.addEventListener("scroll", checkScrollPosition);
+  }
+
+  function setupCheckboxGate(stepTwo) {
+    if (!stepTwo.checkbox || !stepTwo.ctaBtn) return;
+
+    stepTwo.checkbox.addEventListener("change", function () {
+      stepTwo.ctaBtn.disabled = !stepTwo.checkbox.checked;
+    });
+  }
+
+  async function init() {
+    const stepOne = getStepOneElements();
+    const stepTwo = getStepTwoElements();
+
+    if (!stepOne.overlay) {
+      return;
+    }
+
+    setupTermsScrollGate(stepTwo);
+    setupCheckboxGate(stepTwo);
+
+    if (stepTwo.closeBtn) {
+      stepTwo.closeBtn.addEventListener("click", function () {
+        hideOverlay(stepTwo.overlay);
+      });
+    }
+
+    if (stepTwo.backBtn) {
+      stepTwo.backBtn.addEventListener("click", function () {
+        hideOverlay(stepTwo.overlay);
+        showOverlay(stepOne.overlay);
+      });
+    }
+
+    if (stepTwo.overlay) {
+      stepTwo.overlay.addEventListener("click", function (event) {
+        if (event.target === stepTwo.overlay) {
+          hideOverlay(stepTwo.overlay);
+        }
+      });
+    }
+
+    if (stepTwo.ctaBtn) {
+      stepTwo.ctaBtn.addEventListener("click", function () {
+        if (stepTwo.ctaBtn.disabled) return;
+
+        window.location.href = APPLICATION_PAGE_URL;
+      });
+    }
+
+    /*
+     * Only ever attempt the eligibility check once per browser
+     * session so we don't spam the endpoint on every page view.
      */
 
     if (sessionStorage.getItem(SESSION_SEEN_KEY) === "true") {
@@ -98,27 +183,31 @@
     sessionStorage.setItem(SESSION_SEEN_KEY, "true");
 
     if (data.commissionRate) {
-      updateCommissionText(elements, data.commissionRate);
+      updateCommissionText(stepOne, data.commissionRate);
     }
 
-    showPopup(elements);
+    showOverlay(stepOne.overlay);
 
-    elements.closeBtn.addEventListener("click", function () {
-      hidePopup(elements);
+    stepOne.closeBtn.addEventListener("click", function () {
+      hideOverlay(stepOne.overlay);
     });
 
-    elements.laterBtn.addEventListener("click", function () {
-      hidePopup(elements);
+    stepOne.laterBtn.addEventListener("click", function () {
+      hideOverlay(stepOne.overlay);
     });
 
-    elements.overlay.addEventListener("click", function (event) {
-      if (event.target === elements.overlay) {
-        hidePopup(elements);
+    stepOne.overlay.addEventListener("click", function (event) {
+      if (event.target === stepOne.overlay) {
+        hideOverlay(stepOne.overlay);
       }
     });
 
-    elements.joinBtn.addEventListener("click", function () {
-      window.location.href = APPLICATION_PAGE_URL;
+    stepOne.knowMoreBtn.addEventListener("click", function () {
+      hideOverlay(stepOne.overlay);
+
+      if (stepTwo.overlay) {
+        showOverlay(stepTwo.overlay);
+      }
     });
   }
 
