@@ -48,6 +48,10 @@ export default function App() {
           Program Settings
         </s-link>
 
+        <s-link href="/app/applications">
+          Applications
+        </s-link>
+
       </s-app-nav>
 
       <Outlet />
