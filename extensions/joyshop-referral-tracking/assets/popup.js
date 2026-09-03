@@ -6,14 +6,21 @@
  * - No Admin API tokens or database credentials ever touch this file.
  * - Shows the popup once per eligible customer (server marks
  *   notifiedAt so a repeat check returns eligible: false).
- * - "Join Now" calls the app proxy to actually create the
- *   ambassador record server-side.
+ * - "Join Now" sends the customer to the ambassador application
+ *   page, where they submit details + PAN/Aadhaar for manual review.
  */
 
 (function () {
   "use strict";
 
   const SESSION_SEEN_KEY = "joyshop_ambassador_popup_seen";
+
+  /*
+   * Update this to match the handle of the Page you create in
+   * Shopify Admin → Online Store → Pages, using the
+   * "ambassador-application" template.
+   */
+  const APPLICATION_PAGE_URL = "/pages/become-ambassador";
 
   function getElements() {
     return {
@@ -38,15 +45,6 @@
     document.body.style.overflow = "";
   }
 
-  function setMessage(elements, text, isError) {
-    if (!elements.message) return;
-
-    elements.message.textContent = text || "";
-    elements.message.className = isError
-      ? "joyshop-popup-message joyshop-popup-error"
-      : "joyshop-popup-message joyshop-popup-success";
-  }
-
   async function checkEligibility() {
     try {
       const response = await fetch("/apps/joyshop/eligibility", {
@@ -65,26 +63,6 @@
     } catch (error) {
       console.error("JOYSHOP eligibility check failed:", error);
       return null;
-    }
-  }
-
-  async function becomeAmbassador() {
-    try {
-      const response = await fetch("/apps/joyshop/become-ambassador", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-
-      return await response.json();
-    } catch (error) {
-      console.error("JOYSHOP become-ambassador failed:", error);
-      return {
-        success: false,
-        error: "Something went wrong. Please try again.",
-      };
     }
   }
 
@@ -139,33 +117,8 @@
       }
     });
 
-    elements.joinBtn.addEventListener("click", async function () {
-      elements.joinBtn.disabled = true;
-      elements.joinBtn.textContent = "Joining...";
-
-      const result = await becomeAmbassador();
-
-      if (result.success) {
-        setMessage(
-          elements,
-          result.alreadyAmbassador
-            ? "You're already an ambassador!"
-            : `You're in! Your referral code is ${result.referralCode}.`,
-          false
-        );
-
-        elements.joinBtn.textContent = "Joined!";
-
-        setTimeout(function () {
-          hidePopup(elements);
-        }, 2500);
-
-      } else {
-        setMessage(elements, result.error || "Something went wrong.", true);
-
-        elements.joinBtn.disabled = false;
-        elements.joinBtn.textContent = "Join Now";
-      }
+    elements.joinBtn.addEventListener("click", function () {
+      window.location.href = APPLICATION_PAGE_URL;
     });
   }
 
