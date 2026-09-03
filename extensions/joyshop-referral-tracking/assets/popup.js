@@ -9,20 +9,14 @@
  * - The terms checkbox stays disabled until the person scrolls
  *   the terms box to the bottom.
  * - "I'm Interested" stays disabled until the checkbox is
- *   checked, then sends the person to the application page.
+ *   checked, then sends the customer an email with a link to
+ *   the application page.
  */
 
 (function () {
   "use strict";
 
   const SESSION_SEEN_KEY = "joyshop_ambassador_popup_seen";
-
-  /*
-   * Update this to match the handle of the Page you create in
-   * Shopify Admin → Online Store → Pages, using the
-   * "ambassador-application" template.
-   */
-  const APPLICATION_PAGE_URL = "/pages/become-an-ambassador";
 
   /*
    * How close to the bottom (in px) counts as "scrolled to
@@ -36,9 +30,6 @@
       closeBtn: document.getElementById("joyshop-popup-close"),
       knowMoreBtn: document.getElementById("joyshop-popup-know-more-btn"),
       laterBtn: document.getElementById("joyshop-popup-later-btn"),
-      commissionText: document.getElementById(
-        "joyshop-popup-commission-text"
-      ),
     };
   }
 
@@ -50,6 +41,7 @@
       termsBox: document.getElementById("joyshop-terms-box"),
       checkbox: document.getElementById("joyshop-terms-checkbox"),
       ctaBtn: document.getElementById("joyshop-terms-cta"),
+      message: document.getElementById("joyshop-terms-message"),
     };
   }
 
@@ -84,10 +76,33 @@
     }
   }
 
-  function updateCommissionText(elements, rate) {
-    if (!elements.commissionText || !rate) return;
+  async function notifyInterest() {
+    try {
+      const response = await fetch("/apps/joyshop/notify-interest", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+        },
+      });
 
-    elements.commissionText.textContent = `Earn up to ${rate}% Commission`;
+      return await response.json();
+    } catch (error) {
+      console.error("JOYSHOP notify-interest failed:", error);
+      return {
+        success: false,
+        error: "Something went wrong. Please try again.",
+      };
+    }
+  }
+
+  function setMessage(elements, text, isError) {
+    if (!elements.message) return;
+
+    elements.message.textContent = text || "";
+    elements.message.className = isError
+      ? "joyshop-terms-message joyshop-terms-error"
+      : "joyshop-terms-message joyshop-terms-success";
   }
 
   function setupTermsScrollGate(stepTwo) {
@@ -157,10 +172,34 @@
     }
 
     if (stepTwo.ctaBtn) {
-      stepTwo.ctaBtn.addEventListener("click", function () {
+      stepTwo.ctaBtn.addEventListener("click", async function () {
         if (stepTwo.ctaBtn.disabled) return;
 
-        window.location.href = APPLICATION_PAGE_URL;
+        const originalText = stepTwo.ctaBtn.innerHTML;
+
+        stepTwo.ctaBtn.disabled = true;
+        stepTwo.ctaBtn.textContent = "Sending...";
+
+        const result = await notifyInterest();
+
+        if (result.success) {
+          setMessage(
+            stepTwo,
+            `We've sent an application link to ${result.email}. Please check your inbox!`,
+            false
+          );
+
+          stepTwo.ctaBtn.textContent = "Email Sent!";
+        } else {
+          setMessage(
+            stepTwo,
+            result.error || "Something went wrong. Please try again.",
+            true
+          );
+
+          stepTwo.ctaBtn.disabled = false;
+          stepTwo.ctaBtn.innerHTML = originalText;
+        }
       });
     }
 
@@ -181,10 +220,6 @@
     }
 
     sessionStorage.setItem(SESSION_SEEN_KEY, "true");
-
-    if (data.commissionRate) {
-      updateCommissionText(stepOne, data.commissionRate);
-    }
 
     showOverlay(stepOne.overlay);
 

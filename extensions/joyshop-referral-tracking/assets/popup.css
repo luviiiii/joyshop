@@ -630,6 +630,25 @@
   cursor: not-allowed;
 }
 
+.joyshop-terms-message {
+  margin: 14px 0 0;
+
+  font-size: 13px;
+  line-height: 1.5;
+
+  text-align: center;
+}
+
+.joyshop-terms-success {
+  color: #14532d;
+  font-weight: 600;
+}
+
+.joyshop-terms-error {
+  color: #c62828;
+  font-weight: 600;
+}
+
 @media (max-width: 800px) {
   .joyshop-terms-modal {
     padding: 40px 24px 32px;
