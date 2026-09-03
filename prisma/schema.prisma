@@ -228,3 +228,34 @@ model AmbassadorEligibility {
   @@index([customerId])
   @@index([eligible])
 }
+
+model AmbassadorApplication {
+  id         String @id @default(cuid())
+  shop       String
+  customerId String
+
+  name  String
+  email String
+  phone String?
+
+  panNumber String?
+  panFileId String?
+
+  aadhaarNumber String?
+  aadhaarFileId String?
+
+  agreedToTerms Boolean @default(false)
+
+  status String @default("PENDING")
+  // PENDING, APPROVED, REJECTED
+
+  reviewedAt  DateTime?
+  reviewNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shop, customerId])
+  @@index([shop])
+  @@index([status])
+}
