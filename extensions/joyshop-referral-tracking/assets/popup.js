@@ -20,7 +20,7 @@
    * Shopify Admin → Online Store → Pages, using the
    * "ambassador-application" template.
    */
-  const APPLICATION_PAGE_URL = "/pages/become-ambassador";
+  const APPLICATION_PAGE_URL = "/pages/become-an-ambassador";
 
   function getElements() {
     return {
