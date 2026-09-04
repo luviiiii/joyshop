@@ -11,32 +11,60 @@ export const loader = async ({ request }) => {
 
   const shop = session.shop;
 
+  const url = new URL(request.url);
+  const searchTerm = url.searchParams.get("q")?.trim() || "";
+
   // Get existing ambassadors
   const ambassadors = await db.ambassador.findMany({
     where: { shop },
     orderBy: { createdAt: "desc" },
   });
 
-  // Get Shopify customers
-  const response = await admin.graphql(`
-    #graphql
-    query GetCustomers {
-      customers(first: 50) {
-        nodes {
-          id
-          firstName
-          lastName
-          email
-          phone
-          numberOfOrders
-          amountSpent {
-            amount
-            currencyCode
+  /*
+   * Build the Shopify customer search query.
+   * Shopify's customer search syntax lets us match across
+   * name, email, and phone with a single free-text term.
+   */
+  const customerQuery = searchTerm
+    ? `#graphql
+      query SearchCustomers($query: String!) {
+        customers(first: 50, query: $query) {
+          nodes {
+            id
+            firstName
+            lastName
+            email
+            phone
+            numberOfOrders
+            amountSpent {
+              amount
+              currencyCode
+            }
           }
         }
-      }
-    }
-  `);
+      }`
+    : `#graphql
+      query GetCustomers {
+        customers(first: 50) {
+          nodes {
+            id
+            firstName
+            lastName
+            email
+            phone
+            numberOfOrders
+            amountSpent {
+              amount
+              currencyCode
+            }
+          }
+        }
+      }`;
+
+  const response = await admin.graphql(
+    customerQuery,
+    searchTerm ? { variables: { query: searchTerm } } : undefined
+  );
 
   const result = await response.json();
 
@@ -55,6 +83,7 @@ export const loader = async ({ request }) => {
     shop,
     ambassadors,
     customers: availableCustomers,
+    searchTerm,
   };
 };
 
@@ -183,7 +212,7 @@ function ReferralLinkRow({ referralCode }) {
 }
 
 export default function Ambassadors() {
-  const { ambassadors, customers } = useLoaderData();
+  const { ambassadors, customers, searchTerm } = useLoaderData();
 
   return (
     <s-page heading="Ambassadors">
@@ -275,17 +304,57 @@ export default function Ambassadors() {
 
       </s-section>
 
-      {/* CUSTOMER LIST */}
+      {/* CUSTOMER SEARCH + LIST */}
       <s-section heading="Create Ambassador">
 
         <s-text>
           Select a Shopify customer to make them an ambassador.
         </s-text>
 
+        <Form method="get" style={{ marginTop: "12px", marginBottom: "12px" }}>
+
+          <s-stack direction="inline" gap="small" align="center">
+
+            <input
+              type="text"
+              name="q"
+              placeholder="Search by name, email or phone..."
+              defaultValue={searchTerm}
+              style={{
+                flex: 1,
+                minWidth: "260px",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid #d6dfd8",
+                fontSize: "14px",
+              }}
+            />
+
+            <s-button type="submit">
+              Search
+            </s-button>
+
+            {searchTerm && (
+              <s-button href="/app/ambassadors">
+                Clear
+              </s-button>
+            )}
+
+          </s-stack>
+
+        </Form>
+
+        {searchTerm && (
+          <s-text>
+            Showing results for "<strong>{searchTerm}</strong>"
+          </s-text>
+        )}
+
         {customers.length === 0 ? (
           <s-banner tone="info">
-            All available customers are already ambassadors, or your store
-            does not have any customers yet.
+            {searchTerm
+              ? `No customers found matching "${searchTerm}".`
+              : "All available customers are already ambassadors, or your store does not have any customers yet."}
           </s-banner>
         ) : (
           <s-stack direction="block" gap="base">
