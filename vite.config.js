@@ -34,25 +34,6 @@ if (host === "localhost") {
 }
 
 export default defineConfig({
-  /*
-   * IMPORTANT:
-   * Without this, Vite emits relative asset URLs like
-   * "/assets/entry.client-xxxx.js". That works fine when the
-   * page is loaded directly from this app's own domain (e.g.
-   * the embedded admin app), but breaks any route loaded
-   * through Shopify's App Proxy (e.g. apps.joyshop.dashboard),
-   * because the browser sees that page as being served from
-   * the STOREFRONT domain (justorganik.co), not this app's
-   * domain — so relative asset paths 404.
-   *
-   * Setting an absolute base here makes every generated
-   * <script>/<link> tag point at this app's real domain
-   * regardless of which domain is displaying the page.
-   */
-  base: process.env.SHOPIFY_APP_URL
-    ? `${process.env.SHOPIFY_APP_URL.replace(/\/$/, "")}/`
-    : "/",
-
   server: {
     allowedHosts: [host],
 
