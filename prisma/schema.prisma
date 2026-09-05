@@ -244,10 +244,11 @@ model AmbassadorApplication {
   aadhaarNumber String?
   aadhaarFileId String?
 
+  cancelledChequeFileId String?    
+
   agreedToTerms Boolean @default(false)
 
   status String @default("PENDING")
-  // PENDING, APPROVED, REJECTED
 
   reviewedAt  DateTime?
   reviewNotes String?

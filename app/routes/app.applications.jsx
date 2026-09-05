@@ -64,6 +64,8 @@ export const loader = async ({ request }) => {
   applications.forEach((application) => {
     if (application.panFileId) fileIds.push(application.panFileId);
     if (application.aadhaarFileId) fileIds.push(application.aadhaarFileId);
+    if (application.cancelledChequeFileId)
+      fileIds.push(application.cancelledChequeFileId);
   });
 
   const fileUrls = await fetchFileUrls(admin, fileIds);
@@ -75,6 +77,9 @@ export const loader = async ({ request }) => {
       : null,
     aadhaarFileUrl: application.aadhaarFileId
       ? fileUrls[application.aadhaarFileId] || null
+      : null,
+    cancelledChequeFileUrl: application.cancelledChequeFileId
+      ? fileUrls[application.cancelledChequeFileId] || null
       : null,
   }));
 
@@ -275,6 +280,21 @@ export default function Applications() {
                         </s-link>
                       ) : (
                         <s-text>Aadhaar photo processing...</s-text>
+                      )}
+                    </s-stack>
+
+                    <s-stack direction="block" gap="small">
+                      <s-text>Cancelled Cheque</s-text>
+
+                      {application.cancelledChequeFileUrl ? (
+                        <s-link
+                          href={application.cancelledChequeFileUrl}
+                          target="_blank"
+                        >
+                          View Cheque Photo
+                        </s-link>
+                      ) : (
+                        <s-text>Cheque photo processing...</s-text>
                       )}
                     </s-stack>
                   </s-stack>

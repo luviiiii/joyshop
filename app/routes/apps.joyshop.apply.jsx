@@ -161,6 +161,7 @@ export const action = async ({ request }) => {
 
     const panFile = formData.get("panFile");
     const aadhaarFile = formData.get("aadhaarFile");
+    const cancelledChequeFile = formData.get("cancelledChequeFile");
 
     if (!name || !email) {
       return Response.json(
@@ -206,6 +207,20 @@ export const action = async ({ request }) => {
       );
     }
 
+    if (
+      !cancelledChequeFile ||
+      !(cancelledChequeFile instanceof Blob) ||
+      cancelledChequeFile.size === 0
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "Cancelled cheque photo is required.",
+        },
+        { status: 400 }
+      );
+    }
+
     /*
      * Already an active ambassador — no need to apply again.
      */
@@ -244,6 +259,10 @@ export const action = async ({ request }) => {
 
     const panFileId = await stageAndUploadFile(admin, panFile);
     const aadhaarFileId = await stageAndUploadFile(admin, aadhaarFile);
+    const cancelledChequeFileId = await stageAndUploadFile(
+      admin,
+      cancelledChequeFile
+    );
 
     const application = await db.ambassadorApplication.upsert({
       where: {
@@ -257,6 +276,7 @@ export const action = async ({ request }) => {
         panFileId,
         aadhaarNumber: aadhaarNumber || null,
         aadhaarFileId,
+        cancelledChequeFileId,
         agreedToTerms: true,
         status: "PENDING",
         reviewedAt: null,
@@ -272,6 +292,7 @@ export const action = async ({ request }) => {
         panFileId,
         aadhaarNumber: aadhaarNumber || null,
         aadhaarFileId,
+        cancelledChequeFileId,
         agreedToTerms: true,
         status: "PENDING",
       },
