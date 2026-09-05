@@ -74,6 +74,22 @@ export const loader = async ({ request }) => {
     orderBy: { createdAt: "desc" },
   });
 
+  console.log(
+    "RAW APPLICATIONS FROM DB:",
+    JSON.stringify(
+      applications.map((a) => ({
+        id: a.id,
+        name: a.name,
+        status: a.status,
+        panFileId: a.panFileId,
+        aadhaarFileId: a.aadhaarFileId,
+        cancelledChequeFileId: a.cancelledChequeFileId,
+      })),
+      null,
+      2
+    )
+  );
+
   const fileIds = [];
 
   applications.forEach((application) => {
