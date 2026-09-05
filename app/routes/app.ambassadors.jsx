@@ -72,11 +72,11 @@ export const loader = async ({ request }) => {
 
   // Remove customers who are already ambassadors
   const ambassadorCustomerIds = new Set(
-    ambassadors.map((ambassador) => ambassador.customerId)
+    ambassadors.map((ambassador) => plainCustomerId(ambassador.customerId))
   );
 
   const availableCustomers = customers.filter(
-    (customer) => !ambassadorCustomerIds.has(customer.id)
+    (customer) => !ambassadorCustomerIds.has(plainCustomerId(customer.id))
   );
 
   return {
@@ -86,6 +86,30 @@ export const loader = async ({ request }) => {
     searchTerm,
   };
 };
+
+function customerGid(customerId) {
+  if (!customerId) return null;
+
+  const value = String(customerId);
+
+  if (value.startsWith("gid://shopify/Customer/")) {
+    return value;
+  }
+
+  return `gid://shopify/Customer/${value}`;
+}
+
+function plainCustomerId(customerId) {
+  if (!customerId) return null;
+
+  const value = String(customerId);
+
+  if (value.startsWith("gid://shopify/Customer/")) {
+    return value.replace("gid://shopify/Customer/", "");
+  }
+
+  return value;
+}
 
 export const action = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -110,7 +134,7 @@ export const action = async ({ request }) => {
   const existing = await db.ambassador.findFirst({
     where: {
       shop,
-      customerId,
+      customerId: plainCustomerId(customerId),
     },
   });
 
@@ -138,7 +162,7 @@ export const action = async ({ request }) => {
   const ambassador = await db.ambassador.create({
     data: {
       shop,
-      customerId: String(customerId),
+      customerId: plainCustomerId(customerId),
       name: String(name || "Ambassador"),
       email: String(email),
       phone: phone ? String(phone) : null,
