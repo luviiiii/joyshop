@@ -30,8 +30,7 @@ app.use(
 app.use(express.static("build/client", { maxAge: "1h" }));
 
 // Everything else goes to the React Router app itself.
-app.all(
-  "*",
+app.use(
   createRequestHandler({
     build,
   })
