@@ -160,24 +160,13 @@ export async function loader({ request }) {
     groupedChartData[key].value += Number(commission.commissionAmount || 0);
   });
 
-  let chartData =
+  const chartData =
     Object.values(groupedChartData)
       .slice(-7)
       .map((item) => ({
         ...item,
         value: Number(item.value.toFixed(2)),
       }));
-
-  if (!chartData.length) {
-    chartData = [
-      { label: "1 Aug", value: 50 },
-      { label: "5 Aug", value: 90 },
-      { label: "10 Aug", value: 50 },
-      { label: "15 Aug", value: 90 },
-      { label: "20 Aug", value: 50 },
-      { label: "24 Aug", value: 90 },
-    ];
-  }
 
   const totalCommission = commissions.reduce(
     (total, commission) => total + Number(commission.commissionAmount || 0),
@@ -879,20 +868,9 @@ export default function AmbassadorDashboard() {
             </div>
 
             <div className="payout-action">
-              <p>Minimum payout: ₹100</p>
-
-              <payoutFetcher.Form method="post">
-                <input type="hidden" name="action" value="request-payout" />
-                <input type="hidden" name="ambassadorId" value={ambassador.id || ""} />
-                <input type="hidden" name="amount" value={stats.available} />
-                <button
-                  type="submit"
-                  className="request-button"
-                  disabled={isSubmitting || stats.available < 100}
-                >
-                  {isSubmitting ? "Requesting..." : "Request Payout →"}
-                </button>
-              </payoutFetcher.Form>
+              <p className="payout-note">
+                You'll get your commission at the end of every month.
+              </p>
             </div>
           </section>
 
@@ -910,28 +888,35 @@ export default function AmbassadorDashboard() {
                 <span>Total referral commission</span>
               </div>
 
-              <div className="chart">
-                <div className="chart-grid">
-                  <div className="grid-line top"><span>₹{maximum}</span></div>
-                  <div className="grid-line middle"><span>₹{Math.round(maximum / 2)}</span></div>
-                  <div className="grid-line bottom"><span>₹0</span></div>
+              {chartData.length === 0 ? (
+                <div className="empty-state">
+                  <strong>No earnings yet</strong>
+                  <p>Your earnings will appear here once you start earning commission.</p>
+                </div>
+              ) : (
+                <div className="chart">
+                  <div className="chart-grid">
+                    <div className="grid-line top"><span>₹{maximum}</span></div>
+                    <div className="grid-line middle"><span>₹{Math.round(maximum / 2)}</span></div>
+                    <div className="grid-line bottom"><span>₹0</span></div>
 
-                  <div className="bars">
-                    {chartData.map((item, index) => {
-                      const value = Number(item.value || 0);
-                      const height = Math.max(5, Math.min(100, (value / maximum) * 100));
+                    <div className="bars">
+                      {chartData.map((item, index) => {
+                        const value = Number(item.value || 0);
+                        const height = Math.max(5, Math.min(100, (value / maximum) * 100));
 
-                      return (
-                        <div className="bar-column" key={`${item.label}-${index}`}>
-                          <div className="bar-value">{money(value)}</div>
-                          <div className="earning-bar" style={{ height: `${height}%` }} />
-                          <span className="bar-label">{item.label}</span>
-                        </div>
-                      );
-                    })}
+                        return (
+                          <div className="bar-column" key={`${item.label}-${index}`}>
+                            <div className="bar-value">{money(value)}</div>
+                            <div className="earning-bar" style={{ height: `${height}%` }} />
+                            <span className="bar-label">{item.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </section>
 
             <section
@@ -1189,6 +1174,7 @@ svg { width: 100%; height: 100%; }
 .payout-banner p { margin: 0; color: #6b7a70; font-size: 11px; }
 .payout-action { display: flex; align-items: center; gap: 14px; }
 .payout-action > p { font-size: 10px; }
+.payout-note { font-size: 13px; color: #4b5a4f; font-weight: 600; margin: 0; }
 .request-button { border: 0; border-radius: 8px; background: #14532d; color: #fff; padding: 11px 16px; font-weight: 700; font-size: 12px; }
 .request-button:disabled { background: #b0bfb5; cursor: not-allowed; }
 
