@@ -21,10 +21,20 @@ async function fetchFileUrls(admin, fileIds) {
         id
         ... on GenericFile {
           url
+          fileStatus
+          fileErrors {
+            code
+            message
+          }
         }
         ... on MediaImage {
           image {
             url
+          }
+          fileStatus
+          fileErrors {
+            code
+            message
           }
         }
       }
@@ -35,6 +45,11 @@ async function fetchFileUrls(admin, fileIds) {
   );
 
   const result = await response.json();
+
+  console.log(
+    "FILE STATUS CHECK:",
+    JSON.stringify(result?.data?.nodes, null, 2)
+  );
 
   const nodes = result?.data?.nodes || [];
 
