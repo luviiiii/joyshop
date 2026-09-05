@@ -11,6 +11,13 @@ import SettingsModal from "./SettingsModal";
    LOADER
 ========================================================= */
 
+export function headers() {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+  };
+}
+
 export async function loader({ request }) {
   await authenticate.public.appProxy(request);
 
