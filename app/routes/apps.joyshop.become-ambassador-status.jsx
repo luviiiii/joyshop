@@ -3,12 +3,7 @@ import db from "../db.server";
 
 /*
  * Read-only eligibility check for showing a persistent
- * "Become an Ambassador" button on the account page — for
- * customers who are eligible but dismissed the popup, missed
- * it, or just haven't applied yet.
- *
- * Unlike apps.joyshop.eligibility.jsx, this does NOT mark
- * notifiedAt, so it has no effect on the one-time popup logic.
+ * "Become an Ambassador" button on the account page.
  */
 export const loader = async ({ request }) => {
   try {
@@ -19,7 +14,10 @@ export const loader = async ({ request }) => {
     const shop = url.searchParams.get("shop");
     const customerId = url.searchParams.get("logged_in_customer_id");
 
+    console.log("BECOME-AMBASSADOR-STATUS CHECK:", { shop, customerId });
+
     if (!shop || !customerId) {
+      console.log("BECOME-AMBASSADOR-STATUS: missing shop or customerId");
       return Response.json({ showButton: false });
     }
 
@@ -31,42 +29,58 @@ export const loader = async ({ request }) => {
       },
     });
 
+    console.log(
+      "BECOME-AMBASSADOR-STATUS eligibility result:",
+      JSON.stringify(eligibility)
+    );
+
+    // Also fetch ALL eligibility rows for this customer, regardless
+    // of shop/eligible filter, to spot mismatches.
+    const allEligibilityRows = await db.ambassadorEligibility.findMany({
+      where: { customerId },
+    });
+
+    console.log(
+      "BECOME-AMBASSADOR-STATUS all eligibility rows for this customerId:",
+      JSON.stringify(allEligibilityRows)
+    );
+
     if (!eligibility) {
       return Response.json({ showButton: false });
     }
 
     const existingAmbassador = await db.ambassador.findFirst({
-      where: {
-        shop,
-        customerId,
-      },
+      where: { shop, customerId },
     });
 
+    console.log(
+      "BECOME-AMBASSADOR-STATUS existingAmbassador:",
+      JSON.stringify(existingAmbassador)
+    );
+
     if (existingAmbassador) {
-      // Already an ambassador — the dashboard button covers this.
       return Response.json({ showButton: false });
     }
 
     const existingApplication = await db.ambassadorApplication.findFirst({
-      where: {
-        shop,
-        customerId,
-      },
+      where: { shop, customerId },
     });
 
+    console.log(
+      "BECOME-AMBASSADOR-STATUS existingApplication:",
+      JSON.stringify(existingApplication)
+    );
+
     if (existingApplication && existingApplication.status === "PENDING") {
-      // Already applied, waiting on review — don't prompt again.
       return Response.json({ showButton: false });
     }
 
     if (existingApplication && existingApplication.status === "APPROVED") {
-      // Should already be an Ambassador record in this case, but
-      // just in case of a data inconsistency, don't show the button.
       return Response.json({ showButton: false });
     }
 
-    // Eligible, not an ambassador, no pending/approved application
-    // (a REJECTED application is fine — let them reapply).
+    console.log("BECOME-AMBASSADOR-STATUS: showing button = true");
+
     return Response.json({ showButton: true });
   } catch (error) {
     console.error("BECOME AMBASSADOR STATUS CHECK ERROR:", error);
