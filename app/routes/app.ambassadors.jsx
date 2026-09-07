@@ -1,5 +1,5 @@
 import { useLoaderData, Form } from "react-router";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
@@ -14,9 +14,9 @@ export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const searchTerm = url.searchParams.get("q")?.trim() || "";
 
-  // Get existing ambassadors (exclude removed ones from the active list)
+  // Get existing ambassadors
   const ambassadors = await db.ambassador.findMany({
-    where: { shop, status: { not: "REMOVED" } },
+    where: { shop },
     orderBy: { createdAt: "desc" },
   });
 
@@ -121,13 +121,15 @@ export const action = async ({ request }) => {
   const actionType = formData.get("action");
 
   /*
-   * REMOVE AMBASSADOR
-   * Soft-removes by setting status to REMOVED rather than
-   * deleting the row outright — deleting would cascade-delete
-   * their entire referral/commission/payout history, since
-   * those relations use onDelete: Cascade.
+   * DELETE AMBASSADOR
+   * Permanently deletes the ambassador record. Because the
+   * Referral, Commission, and Payout models all use
+   * onDelete: Cascade on their ambassadorId relation, this
+   * also permanently deletes all of that ambassador's
+   * referral, commission, and payout history. This cannot
+   * be undone.
    */
-  if (actionType === "remove-ambassador") {
+  if (actionType === "delete-ambassador") {
     const ambassadorId = formData.get("ambassadorId");
 
     if (!ambassadorId) {
@@ -148,14 +150,13 @@ export const action = async ({ request }) => {
       };
     }
 
-    await db.ambassador.update({
+    await db.ambassador.delete({
       where: { id: ambassador.id },
-      data: { status: "REMOVED" },
     });
 
     return {
       success: true,
-      removed: true,
+      deleted: true,
     };
   }
 
@@ -233,6 +234,36 @@ function buildReferralLink(referralCode) {
 /* =========================================================
    REFERRAL LINK ROW WITH COPY BUTTON
 ========================================================= */
+
+/* =========================================================
+   DELETE AMBASSADOR FORM (with confirmation)
+========================================================= */
+
+function DeleteAmbassadorForm({ ambassadorId }) {
+  const formRef = useRef(null);
+
+  function handleClick(event) {
+    const confirmed = window.confirm(
+      "Delete this ambassador permanently? This will also permanently delete all of their referral, commission, and payout history. This cannot be undone."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    formRef.current?.requestSubmit();
+  }
+
+  return (
+    <Form method="post" ref={formRef}>
+      <input type="hidden" name="action" value="delete-ambassador" />
+      <input type="hidden" name="ambassadorId" value={ambassadorId} />
+      <s-button type="button" tone="critical" onclick={handleClick}>
+        Delete Ambassador
+      </s-button>
+    </Form>
+  );
+}
 
 function ReferralLinkRow({ referralCode }) {
   const [copied, setCopied] = useState(false);
@@ -359,21 +390,7 @@ export default function Ambassadors() {
                     referralCode={ambassador.referralCode}
                   />
 
-                  <Form method="post">
-                    <input
-                      type="hidden"
-                      name="action"
-                      value="remove-ambassador"
-                    />
-                    <input
-                      type="hidden"
-                      name="ambassadorId"
-                      value={ambassador.id}
-                    />
-                    <s-button type="submit" tone="critical">
-                      Remove Ambassador
-                    </s-button>
-                  </Form>
+                  <DeleteAmbassadorForm ambassadorId={ambassador.id} />
 
                 </s-stack>
 
