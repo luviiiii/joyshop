@@ -14,9 +14,9 @@ export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const searchTerm = url.searchParams.get("q")?.trim() || "";
 
-  // Get existing ambassadors
+  // Get existing ambassadors (exclude removed ones from the active list)
   const ambassadors = await db.ambassador.findMany({
-    where: { shop },
+    where: { shop, status: { not: "REMOVED" } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -117,6 +117,47 @@ export const action = async ({ request }) => {
   const shop = session.shop;
 
   const formData = await request.formData();
+
+  const actionType = formData.get("action");
+
+  /*
+   * REMOVE AMBASSADOR
+   * Soft-removes by setting status to REMOVED rather than
+   * deleting the row outright — deleting would cascade-delete
+   * their entire referral/commission/payout history, since
+   * those relations use onDelete: Cascade.
+   */
+  if (actionType === "remove-ambassador") {
+    const ambassadorId = formData.get("ambassadorId");
+
+    if (!ambassadorId) {
+      return {
+        success: false,
+        error: "Ambassador not found.",
+      };
+    }
+
+    const ambassador = await db.ambassador.findFirst({
+      where: { id: ambassadorId, shop },
+    });
+
+    if (!ambassador) {
+      return {
+        success: false,
+        error: "Ambassador not found.",
+      };
+    }
+
+    await db.ambassador.update({
+      where: { id: ambassador.id },
+      data: { status: "REMOVED" },
+    });
+
+    return {
+      success: true,
+      removed: true,
+    };
+  }
 
   const customerId = formData.get("customerId");
   const name = formData.get("name");
@@ -317,6 +358,22 @@ export default function Ambassadors() {
                   <ReferralLinkRow
                     referralCode={ambassador.referralCode}
                   />
+
+                  <Form method="post">
+                    <input
+                      type="hidden"
+                      name="action"
+                      value="remove-ambassador"
+                    />
+                    <input
+                      type="hidden"
+                      name="ambassadorId"
+                      value={ambassador.id}
+                    />
+                    <s-button type="submit" tone="critical">
+                      Remove Ambassador
+                    </s-button>
+                  </Form>
 
                 </s-stack>
 
