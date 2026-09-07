@@ -236,31 +236,63 @@ function buildReferralLink(referralCode) {
 ========================================================= */
 
 /* =========================================================
-   DELETE AMBASSADOR FORM (with confirmation)
+   DELETE AMBASSADOR FORM (two-click confirmation)
+
+   NOTE: window.confirm()/alert() are unreliable inside
+   Shopify's embedded admin iframe (often silently blocked by
+   the iframe sandbox), so we use an in-page two-click
+   confirmation instead of a native dialog.
 ========================================================= */
 
 function DeleteAmbassadorForm({ ambassadorId }) {
   const formRef = useRef(null);
+  const [confirming, setConfirming] = useState(false);
+  const timeoutRef = useRef(null);
 
-  function handleClick(event) {
-    const confirmed = window.confirm(
-      "Delete this ambassador permanently? This will also permanently delete all of their referral, commission, and payout history. This cannot be undone."
-    );
+  function handleFirstClick() {
+    setConfirming(true);
 
-    if (!confirmed) {
-      return;
+    timeoutRef.current = setTimeout(() => {
+      setConfirming(false);
+    }, 4000);
+  }
+
+  function handleConfirmClick() {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
 
     formRef.current?.requestSubmit();
+  }
+
+  function handleCancelClick() {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    setConfirming(false);
   }
 
   return (
     <Form method="post" ref={formRef}>
       <input type="hidden" name="action" value="delete-ambassador" />
       <input type="hidden" name="ambassadorId" value={ambassadorId} />
-      <s-button type="button" tone="critical" onclick={handleClick}>
-        Delete Ambassador
-      </s-button>
+
+      {!confirming ? (
+        <s-button type="button" tone="critical" onclick={handleFirstClick}>
+          Delete Ambassador
+        </s-button>
+      ) : (
+        <s-stack direction="inline" gap="small" align="center">
+          <s-text>Delete permanently, including all history?</s-text>
+          <s-button type="button" tone="critical" onclick={handleConfirmClick}>
+            Yes, Delete
+          </s-button>
+          <s-button type="button" onclick={handleCancelClick}>
+            Cancel
+          </s-button>
+        </s-stack>
+      )}
     </Form>
   );
 }
