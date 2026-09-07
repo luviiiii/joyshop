@@ -4,7 +4,10 @@
  * - Calls the JOYSHOP app proxy to check eligibility server-side.
  * - Never trusts browser-supplied spend amounts.
  * - No Admin API tokens or database credentials ever touch this file.
- * - Shows the eligibility popup once per eligible customer.
+ * - Shows the eligibility popup once per eligible customer, automatically.
+ * - Also exposes window.JoyshopAmbassadorPopup.open() so other
+ *   pages (like the account page's "Become an Ambassador" button)
+ *   can manually reopen the same two-step flow on demand.
  * - "Know More" opens a second popup with benefits + terms.
  * - The terms checkbox stays disabled until the person scrolls
  *   the terms box to the bottom.
@@ -46,11 +49,13 @@
   }
 
   function showOverlay(overlay) {
+    if (!overlay) return;
     overlay.hidden = false;
     document.body.style.overflow = "hidden";
   }
 
   function hideOverlay(overlay) {
+    if (!overlay) return;
     overlay.hidden = true;
     document.body.style.overflow = "";
   }
@@ -150,6 +155,42 @@
     setupTermsScrollGate(stepTwo);
     setupCheckboxGate(stepTwo);
 
+    /*
+     * Step 1 listeners are now always attached (not just when
+     * the automatic eligibility-triggered popup shows), so that
+     * a manual open via window.JoyshopAmbassadorPopup.open()
+     * works correctly from any page, any time.
+     */
+    if (stepOne.closeBtn) {
+      stepOne.closeBtn.addEventListener("click", function () {
+        hideOverlay(stepOne.overlay);
+      });
+    }
+
+    if (stepOne.laterBtn) {
+      stepOne.laterBtn.addEventListener("click", function () {
+        hideOverlay(stepOne.overlay);
+      });
+    }
+
+    if (stepOne.overlay) {
+      stepOne.overlay.addEventListener("click", function (event) {
+        if (event.target === stepOne.overlay) {
+          hideOverlay(stepOne.overlay);
+        }
+      });
+    }
+
+    if (stepOne.knowMoreBtn) {
+      stepOne.knowMoreBtn.addEventListener("click", function () {
+        hideOverlay(stepOne.overlay);
+
+        if (stepTwo.overlay) {
+          showOverlay(stepTwo.overlay);
+        }
+      });
+    }
+
     if (stepTwo.closeBtn) {
       stepTwo.closeBtn.addEventListener("click", function () {
         hideOverlay(stepTwo.overlay);
@@ -204,8 +245,21 @@
     }
 
     /*
-     * Only ever attempt the eligibility check once per browser
-     * session so we don't spam the endpoint on every page view.
+     * Expose a global manual-open function so other pages (the
+     * account page's "Become an Ambassador" button, for example)
+     * can reopen this same popup on demand, bypassing the
+     * once-per-session automatic check entirely.
+     */
+    window.JoyshopAmbassadorPopup = {
+      open: function () {
+        showOverlay(stepOne.overlay);
+      },
+    };
+
+    /*
+     * Only ever attempt the AUTOMATIC eligibility check once per
+     * browser session so we don't spam the endpoint on every
+     * page view. This does not affect manual opens above.
      */
 
     if (sessionStorage.getItem(SESSION_SEEN_KEY) === "true") {
@@ -222,28 +276,6 @@
     sessionStorage.setItem(SESSION_SEEN_KEY, "true");
 
     showOverlay(stepOne.overlay);
-
-    stepOne.closeBtn.addEventListener("click", function () {
-      hideOverlay(stepOne.overlay);
-    });
-
-    stepOne.laterBtn.addEventListener("click", function () {
-      hideOverlay(stepOne.overlay);
-    });
-
-    stepOne.overlay.addEventListener("click", function (event) {
-      if (event.target === stepOne.overlay) {
-        hideOverlay(stepOne.overlay);
-      }
-    });
-
-    stepOne.knowMoreBtn.addEventListener("click", function () {
-      hideOverlay(stepOne.overlay);
-
-      if (stepTwo.overlay) {
-        showOverlay(stepTwo.overlay);
-      }
-    });
   }
 
   if (document.readyState === "loading") {
