@@ -1,5 +1,5 @@
 import { useLoaderData, Form } from "react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
@@ -239,39 +239,65 @@ function buildReferralLink(referralCode) {
    DELETE AMBASSADOR FORM (two-click confirmation)
 
    NOTE: window.confirm()/alert() are unreliable inside
-   Shopify's embedded admin iframe (often silently blocked by
-   the iframe sandbox), so we use an in-page two-click
+   Shopify's embedded admin iframe, so this uses an in-page
    confirmation instead of a native dialog.
+
+   Also, s-button's onclick prop has proven unreliable with
+   React's handling of custom elements, so this uses a real
+   DOM event listener (attached via useEffect + a ref on the
+   surrounding <Form>) instead of passing onclick as a prop.
 ========================================================= */
 
 function DeleteAmbassadorForm({ ambassadorId }) {
   const formRef = useRef(null);
-  const [confirming, setConfirming] = useState(false);
   const timeoutRef = useRef(null);
+  const [confirming, setConfirming] = useState(false);
 
-  function handleFirstClick() {
-    setConfirming(true);
+  useEffect(() => {
+    const formEl = formRef.current;
 
-    timeoutRef.current = setTimeout(() => {
-      setConfirming(false);
-    }, 4000);
-  }
+    if (!formEl) return;
 
-  function handleConfirmClick() {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
+    function handleClick(event) {
+      const trigger = event.target.closest("[data-action]");
+
+      if (!trigger) return;
+
+      const action = trigger.getAttribute("data-action");
+
+      if (action === "start-delete") {
+        event.preventDefault();
+
+        setConfirming(true);
+
+        timeoutRef.current = setTimeout(() => {
+          setConfirming(false);
+        }, 6000);
+      }
+
+      if (action === "confirm-delete") {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+        formEl.requestSubmit();
+      }
+
+      if (action === "cancel-delete") {
+        event.preventDefault();
+
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+        setConfirming(false);
+      }
     }
 
-    formRef.current?.requestSubmit();
-  }
+    formEl.addEventListener("click", handleClick);
 
-  function handleCancelClick() {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    return () => {
+      formEl.removeEventListener("click", handleClick);
 
-    setConfirming(false);
-  }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   return (
     <Form method="post" ref={formRef}>
@@ -279,16 +305,16 @@ function DeleteAmbassadorForm({ ambassadorId }) {
       <input type="hidden" name="ambassadorId" value={ambassadorId} />
 
       {!confirming ? (
-        <s-button type="button" tone="critical" onclick={handleFirstClick}>
+        <s-button type="button" tone="critical" data-action="start-delete">
           Delete Ambassador
         </s-button>
       ) : (
         <s-stack direction="inline" gap="small" align="center">
           <s-text>Delete permanently, including all history?</s-text>
-          <s-button type="button" tone="critical" onclick={handleConfirmClick}>
+          <s-button type="button" tone="critical" data-action="confirm-delete">
             Yes, Delete
           </s-button>
-          <s-button type="button" onclick={handleCancelClick}>
+          <s-button type="button" data-action="cancel-delete">
             Cancel
           </s-button>
         </s-stack>
