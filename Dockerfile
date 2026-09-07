@@ -18,7 +18,7 @@ ARG SHOPIFY_APP_URL
 ENV SHOPIFY_APP_URL=$SHOPIFY_APP_URL
 
 RUN corepack enable
-RUN corepack prepare pnpm@9.15.4 --activate
+RUN corepack prepare pnpm@11.23.0 --activate
 
 COPY package.json pnpm-lock.yaml ./
 
