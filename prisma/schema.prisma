@@ -109,6 +109,7 @@ model ReferralCredit {
   referral   Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
 
   amount Float
+  discountCode String? 
   status String @default("AVAILABLE")
 
   orderId String?
