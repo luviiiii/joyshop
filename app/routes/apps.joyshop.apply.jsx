@@ -153,7 +153,9 @@ export const action = async ({ request }) => {
     const name = String(formData.get("name") || "").trim();
     const email = String(formData.get("email") || "").trim();
     const phone = String(formData.get("phone") || "").trim();
-    const panNumber = String(formData.get("panNumber") || "").trim();
+    const panNumber = String(formData.get("panNumber") || "")
+      .trim()
+      .toUpperCase();
     const aadhaarNumber = String(
       formData.get("aadhaarNumber") || ""
     ).trim();
@@ -168,6 +170,31 @@ export const action = async ({ request }) => {
         {
           success: false,
           error: "Name and email are required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+
+    if (!panNumber || !PAN_PATTERN.test(panNumber)) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "Enter a valid PAN number (format: ABCDE1234F).",
+        },
+        { status: 400 }
+      );
+    }
+
+    const AADHAAR_PATTERN = /^[0-9]{12}$/;
+
+    if (!aadhaarNumber || !AADHAAR_PATTERN.test(aadhaarNumber)) {
+      return Response.json(
+        {
+          success: false,
+          error: "Enter a valid 12-digit Aadhaar number.",
         },
         { status: 400 }
       );
