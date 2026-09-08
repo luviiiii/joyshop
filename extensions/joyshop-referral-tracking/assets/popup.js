@@ -226,7 +226,7 @@
         if (result.success) {
           setMessage(
             stepTwo,
-            `We've sent an application link to ${result.email}. Please check your inbox!`,
+            `We've sent an application link to ${result.email}. Please check your inbox! Keep your PAN card, Aadhaar card, and a cancelled cheque handy — you'll need photos of all three to complete your application.`,
             false
           );
 
