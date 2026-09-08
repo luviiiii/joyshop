@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server";
 import { Resend } from "resend";
+import db from "../db.server";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -7,7 +8,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
  * Update these to match your real sending address and
  * the live application page URL.
  */
-const FROM_ADDRESS = "JOYSHOP Ambassador Program <care@justorganik.co>";
+const FROM_ADDRESS = "JOYSHOP Ambassador Program <ambassador@justorganik.co>";
 const APPLICATION_PAGE_URL = "https://www.justorganik.co/pages/become-an-ambassador";
 
 function customerGid(customerId) {
@@ -137,6 +138,29 @@ export const action = async ({ request }) => {
     console.log("AMBASSADOR INTEREST EMAIL SENT");
     console.log("Customer:", customer.email);
     console.log("========================================");
+
+    /*
+     * Record that this customer has expressed interest, so
+     * the popup doesn't show again and the "Become an
+     * Ambassador" button on the account page can send them
+     * straight to the application form instead.
+     */
+    try {
+      await db.ambassadorEligibility.updateMany({
+        where: {
+          shop,
+          customerId,
+        },
+        data: {
+          interestedAt: new Date(),
+        },
+      });
+    } catch (updateError) {
+      console.error(
+        "Failed to record interestedAt (non-fatal):",
+        updateError
+      );
+    }
 
     return Response.json({
       success: true,
