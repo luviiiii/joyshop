@@ -220,6 +220,7 @@ model AmbassadorEligibility {
 
   eligibleAt DateTime?
   notifiedAt DateTime?
+  interestedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
