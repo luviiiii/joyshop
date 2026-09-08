@@ -238,13 +238,53 @@ export const loader = async ({ request }) => {
           loggedInCustomerId
         );
 
+        let referredName = null;
+        let referredEmail = null;
+
+        try {
+          const customerResponse = await admin.graphql(
+            `#graphql
+            query GetCustomer($id: ID!) {
+              customer(id: $id) {
+                email
+                firstName
+                lastName
+              }
+            }`,
+            {
+              variables: {
+                id: customerGid(loggedInCustomerId),
+              },
+            }
+          );
+
+          const customerResult = await customerResponse.json();
+          const customer = customerResult?.data?.customer;
+
+          if (customer) {
+            referredName =
+              [customer.firstName, customer.lastName]
+                .filter(Boolean)
+                .join(" ")
+                .trim() || null;
+
+            referredEmail = customer.email || null;
+          }
+        } catch (nameError) {
+          console.error(
+            "Failed to fetch customer name for referral:",
+            nameError
+          );
+          // Fall back to null name/email — not a fatal error.
+        }
+
         referral = await db.referral.create({
           data: {
             shop,
             ambassadorId: ambassador.id,
             referredCustomerId: loggedInCustomerId,
-            referredName: null,
-            referredEmail: null,
+            referredName,
+            referredEmail,
             status: "ACTIVE",
           },
         });
@@ -283,24 +323,6 @@ export const loader = async ({ request }) => {
               loggedInCustomerId
             );
 
-            const customerResponse = await admin.graphql(
-              `#graphql
-              query GetCustomer($id: ID!) {
-                customer(id: $id) {
-                  email
-                  firstName
-                }
-              }`,
-              {
-                variables: {
-                  id: customerGid(loggedInCustomerId),
-                },
-              }
-            );
-
-            const customerResult = await customerResponse.json();
-            const customer = customerResult?.data?.customer;
-
             await db.referralCredit.create({
               data: {
                 shop,
@@ -322,10 +344,10 @@ export const loader = async ({ request }) => {
               },
             });
 
-            if (customer?.email) {
+            if (referredEmail) {
               await sendWelcomeCreditEmail(
-                customer.email,
-                customer.firstName,
+                referredEmail,
+                referredName,
                 creditAmount,
                 MINIMUM_ORDER_VALUE
               );

@@ -19,7 +19,7 @@ export function headers() {
 }
 
 export async function loader({ request }) {
-  await authenticate.public.appProxy(request);
+  const { admin } = await authenticate.public.appProxy(request);
 
   const url = new URL(request.url);
 
@@ -109,6 +109,78 @@ export async function loader({ request }) {
       },
     });
 
+  /*
+   * Backfill referredName for older referrals created before we
+   * started saving it at referral-creation time. Fetches names
+   * from Shopify and persists them so this only happens once
+   * per referral, not on every dashboard load.
+   */
+  const referralsMissingName = referrals.filter(
+    (referral) => !referral.referredName && referral.referredCustomerId
+  );
+
+  if (referralsMissingName.length > 0 && admin) {
+    try {
+      const idsToFetch = referralsMissingName.map((referral) =>
+        referral.referredCustomerId.startsWith("gid://shopify/Customer/")
+          ? referral.referredCustomerId
+          : `gid://shopify/Customer/${referral.referredCustomerId}`
+      );
+
+      const namesResponse = await admin.graphql(
+        `#graphql
+        query GetCustomerNames($ids: [ID!]!) {
+          nodes(ids: $ids) {
+            id
+            ... on Customer {
+              firstName
+              lastName
+              email
+            }
+          }
+        }`,
+        { variables: { ids: idsToFetch } }
+      );
+
+      const namesResult = await namesResponse.json();
+      const nodes = namesResult?.data?.nodes || [];
+
+      for (const referral of referralsMissingName) {
+        const gid = referral.referredCustomerId.startsWith(
+          "gid://shopify/Customer/"
+        )
+          ? referral.referredCustomerId
+          : `gid://shopify/Customer/${referral.referredCustomerId}`;
+
+        const match = nodes.find((node) => node?.id === gid);
+
+        if (!match) continue;
+
+        const fullName =
+          [match.firstName, match.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || null;
+
+        if (fullName || match.email) {
+          referral.referredName = fullName;
+          referral.referredEmail = match.email || referral.referredEmail;
+
+          await db.referral.update({
+            where: { id: referral.id },
+            data: {
+              referredName: fullName,
+              referredEmail: match.email || referral.referredEmail,
+            },
+          });
+        }
+      }
+    } catch (backfillError) {
+      console.error("REFERRAL NAME BACKFILL ERROR:", backfillError);
+      // Non-fatal — dashboard still renders with fallback names.
+    }
+  }
+
   const referralsWithStats = referrals.map((referral) => {
     const referralCommissions = commissions.filter(
       (commission) => commission.referralId === referral.id
@@ -128,11 +200,7 @@ export async function loader({ request }) {
 
     return {
       id: referral.id,
-      name:
-        referral.referredName ||
-        referral.referredEmail ||
-        "Customer",
-      email: referral.referredEmail,
+      name: referral.referredName || "Customer",
       status:
         referralCommissions.length > 0
           ? "ORDER_PLACED"
@@ -442,7 +510,6 @@ export default function AmbassadorDashboard() {
   const payoutFetcher = useFetcher();
 
   const [copied, setCopied] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -520,10 +587,6 @@ export default function AmbassadorDashboard() {
 
   function copyReferralLink() {
     copyText(referralLink, setCopied);
-  }
-
-  function copyReferralCode() {
-    copyText(ambassador.referralCode, setCodeCopied);
   }
 
   function shareWhatsApp() {
@@ -756,7 +819,7 @@ export default function AmbassadorDashboard() {
             </div>
           </section>
 
-          <section className="link-code-grid">
+          <section className="link-only-grid">
             <div className="link-card">
               <div className="link-card-heading">
                 <IconLink />
@@ -783,23 +846,6 @@ export default function AmbassadorDashboard() {
                 <button type="button" className="share-icon instagram" onClick={shareInstagram} aria-label="Share on Instagram">IG</button>
                 <button type="button" className="share-icon generic" onClick={shareGeneric} aria-label="More sharing options">⤴</button>
               </div>
-            </div>
-
-            <div className="code-card">
-              <div className="link-card-heading">
-                <IconGrid />
-                <h3>Your Referral Code</h3>
-              </div>
-
-              <div className="code-row">
-                <div className="code-value">{ambassador.referralCode}</div>
-                <button type="button" className="copy-btn outline" onClick={copyReferralCode}>
-                  <IconCopy />
-                  {codeCopied ? "Copied!" : "Copy"}
-                </button>
-              </div>
-
-              <p className="code-hint">Share this code with your friends</p>
             </div>
           </section>
 
@@ -1131,7 +1177,7 @@ svg { width: 100%; height: 100%; }
 .headline-stat strong { display: block; font-size: 21px; color: #1f2d22; }
 .headline-stat span { display: block; margin-top: 2px; font-size: 12.5px; color: #6b7a70; }
 
-.link-code-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; margin-bottom: 18px; }
+.link-only-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 18px; }
 .link-card, .code-card { background: #ffffff; border: 1px solid #eef1ec; border-radius: 12px; padding: 18px 20px; }
 .link-card-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #14532d; }
 .link-card-heading svg { width: 18px; height: 18px; }
@@ -1241,7 +1287,6 @@ svg { width: 100%; height: 100%; }
   .sidebar { width: 190px; }
   .main { padding: 20px; }
   .two-grid { grid-template-columns: 1fr; }
-  .link-code-grid { grid-template-columns: 1fr; }
   .headline-stats { grid-template-columns: 1fr; }
   .hero-visual { display: none; }
 }

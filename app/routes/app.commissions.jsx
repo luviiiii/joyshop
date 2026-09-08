@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -23,7 +24,7 @@ export const loader = async ({ request }) => {
 
 
 /* -------------------------------- */
-/* APPROVE COMMISSION */
+/* ACTIONS */
 /* -------------------------------- */
 
 export const action = async ({ request }) => {
@@ -44,26 +45,26 @@ export const action = async ({ request }) => {
     );
   }
 
+  const commission = await db.commission.findFirst({
+    where: {
+      id: commissionId,
+      shop: session.shop,
+    },
+  });
+
+  if (!commission) {
+    return Response.json(
+      {
+        success: false,
+        error: "Commission not found.",
+      },
+      { status: 404 }
+    );
+  }
+
   /* APPROVE */
 
   if (actionType === "approve") {
-    const commission = await db.commission.findFirst({
-      where: {
-        id: commissionId,
-        shop: session.shop,
-      },
-    });
-
-    if (!commission) {
-      return Response.json(
-        {
-          success: false,
-          error: "Commission not found.",
-        },
-        { status: 404 }
-      );
-    }
-
     if (commission.status !== "PENDING") {
       return Response.json(
         {
@@ -75,12 +76,8 @@ export const action = async ({ request }) => {
     }
 
     await db.commission.update({
-      where: {
-        id: commission.id,
-      },
-      data: {
-        status: "APPROVED",
-      },
+      where: { id: commission.id },
+      data: { status: "APPROVED" },
     });
 
     return Response.json({
@@ -89,27 +86,85 @@ export const action = async ({ request }) => {
     });
   }
 
+  /* REJECT */
+
+  if (actionType === "reject") {
+    if (commission.status === "PAID") {
+      return Response.json(
+        {
+          success: false,
+          error: "Paid commissions cannot be rejected.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (commission.status === "REJECTED") {
+      return Response.json(
+        {
+          success: false,
+          error: "This commission is already rejected.",
+        },
+        { status: 400 }
+      );
+    }
+
+    await db.commission.update({
+      where: { id: commission.id },
+      data: { status: "REJECTED" },
+    });
+
+    return Response.json({
+      success: true,
+      message: "Commission rejected.",
+    });
+  }
+
+  /* EDIT AMOUNT */
+
+  if (actionType === "edit") {
+    if (commission.status === "PAID") {
+      return Response.json(
+        {
+          success: false,
+          error: "Paid commissions cannot be edited.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const newAmountRaw = formData.get("commissionAmount");
+    const newAmount = Number(newAmountRaw);
+
+    if (
+      newAmountRaw === null ||
+      newAmountRaw === "" ||
+      Number.isNaN(newAmount) ||
+      newAmount < 0
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "Enter a valid commission amount.",
+        },
+        { status: 400 }
+      );
+    }
+
+    await db.commission.update({
+      where: { id: commission.id },
+      data: { commissionAmount: newAmount },
+    });
+
+    return Response.json({
+      success: true,
+      message: "Commission amount updated.",
+    });
+  }
 
   /* MARK AS PAID */
 
   if (actionType === "paid") {
-    const commission = await db.commission.findFirst({
-      where: {
-        id: commissionId,
-        shop: session.shop,
-      },
-    });
-
-    if (!commission) {
-      return Response.json(
-        {
-          success: false,
-          error: "Commission not found.",
-        },
-        { status: 404 }
-      );
-    }
-
     if (commission.status !== "APPROVED") {
       return Response.json(
         {
@@ -121,12 +176,8 @@ export const action = async ({ request }) => {
     }
 
     await db.commission.update({
-      where: {
-        id: commission.id,
-      },
-      data: {
-        status: "PAID",
-      },
+      where: { id: commission.id },
+      data: { status: "PAID" },
     });
 
     return Response.json({
@@ -134,7 +185,6 @@ export const action = async ({ request }) => {
       message: "Commission marked as paid.",
     });
   }
-
 
   return Response.json(
     {
@@ -155,6 +205,33 @@ export default function Commissions() {
   const fetcher = useFetcher();
 
   const isSubmitting = fetcher.state !== "idle";
+
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState("");
+
+  function startEditing(item) {
+    setEditingId(item.id);
+    setEditValue(String(item.commissionAmount || 0));
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setEditValue("");
+  }
+
+  function saveEditing(commissionId) {
+    fetcher.submit(
+      {
+        action: "edit",
+        commissionId,
+        commissionAmount: editValue,
+      },
+      { method: "post" }
+    );
+
+    setEditingId(null);
+    setEditValue("");
+  }
 
   const totalCommission = commissions.reduce(
     (sum, item) =>
@@ -360,7 +437,13 @@ export default function Commissions() {
 
               <tbody>
 
-                {commissions.map((item) => (
+                {commissions.map((item) => {
+                  const isEditingThisRow = editingId === item.id;
+                  const canEditOrReject =
+                    item.status === "PENDING" ||
+                    item.status === "APPROVED";
+
+                  return (
 
                   <tr
                     key={item.id}
@@ -432,12 +515,28 @@ export default function Commissions() {
 
                     <td style={styles.td}>
 
-                      <strong style={styles.money}>
-                        ₹
-                        {Number(
-                          item.commissionAmount || 0
-                        ).toFixed(2)}
-                      </strong>
+                      {isEditingThisRow ? (
+                        <div style={styles.editRow}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editValue}
+                            onChange={(e) =>
+                              setEditValue(e.target.value)
+                            }
+                            style={styles.editInput}
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        <strong style={styles.money}>
+                          ₹
+                          {Number(
+                            item.commissionAmount || 0
+                          ).toFixed(2)}
+                        </strong>
+                      )}
 
                     </td>
 
@@ -477,89 +576,148 @@ export default function Commissions() {
 
                     <td style={styles.td}>
 
-                      {item.status === "PENDING" && (
+                      {isEditingThisRow ? (
 
-                        <fetcher.Form method="post">
-
-                          <input
-                            type="hidden"
-                            name="commissionId"
-                            value={item.id}
-                          />
-
-                          <input
-                            type="hidden"
-                            name="action"
-                            value="approve"
-                          />
-
+                        <div style={styles.actionRow}>
                           <button
-                            type="submit"
+                            type="button"
                             disabled={isSubmitting}
+                            onClick={() => saveEditing(item.id)}
                             style={
                               isSubmitting
                                 ? styles.buttonDisabled
                                 : styles.approveButton
                             }
                           >
-                            {isSubmitting
-                              ? "Approving..."
-                              : "Approve"}
+                            Save
                           </button>
-
-                        </fetcher.Form>
-
-                      )}
-
-
-                      {item.status === "APPROVED" && (
-
-                        <fetcher.Form method="post">
-
-                          <input
-                            type="hidden"
-                            name="commissionId"
-                            value={item.id}
-                          />
-
-                          <input
-                            type="hidden"
-                            name="action"
-                            value="paid"
-                          />
 
                           <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            style={
-                              isSubmitting
-                                ? styles.buttonDisabled
-                                : styles.paidButton
-                            }
+                            type="button"
+                            onClick={cancelEditing}
+                            style={styles.cancelButton}
                           >
-                            {isSubmitting
-                              ? "Processing..."
-                              : "Mark Paid"}
+                            Cancel
                           </button>
+                        </div>
 
-                        </fetcher.Form>
+                      ) : (
 
-                      )}
+                        <div style={styles.actionRow}>
 
+                          {item.status === "PENDING" && (
+                            <fetcher.Form method="post">
+                              <input
+                                type="hidden"
+                                name="commissionId"
+                                value={item.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="action"
+                                value="approve"
+                              />
+                              <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                style={
+                                  isSubmitting
+                                    ? styles.buttonDisabled
+                                    : styles.approveButton
+                                }
+                              >
+                                {isSubmitting
+                                  ? "Approving..."
+                                  : "Approve"}
+                              </button>
+                            </fetcher.Form>
+                          )}
 
-                      {item.status === "PAID" && (
+                          {item.status === "APPROVED" && (
+                            <fetcher.Form method="post">
+                              <input
+                                type="hidden"
+                                name="commissionId"
+                                value={item.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="action"
+                                value="paid"
+                              />
+                              <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                style={
+                                  isSubmitting
+                                    ? styles.buttonDisabled
+                                    : styles.paidButton
+                                }
+                              >
+                                {isSubmitting
+                                  ? "Processing..."
+                                  : "Mark Paid"}
+                              </button>
+                            </fetcher.Form>
+                          )}
 
-                        <span style={styles.completed}>
-                          Completed
-                        </span>
+                          {canEditOrReject && (
+                            <button
+                              type="button"
+                              onClick={() => startEditing(item)}
+                              style={styles.editButton}
+                            >
+                              Edit
+                            </button>
+                          )}
+
+                          {canEditOrReject && (
+                            <fetcher.Form method="post">
+                              <input
+                                type="hidden"
+                                name="commissionId"
+                                value={item.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="action"
+                                value="reject"
+                              />
+                              <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                style={
+                                  isSubmitting
+                                    ? styles.buttonDisabled
+                                    : styles.rejectButton
+                                }
+                              >
+                                Reject
+                              </button>
+                            </fetcher.Form>
+                          )}
+
+                          {item.status === "PAID" && (
+                            <span style={styles.completed}>
+                              Completed
+                            </span>
+                          )}
+
+                          {item.status === "REJECTED" && (
+                            <span style={styles.rejectedText}>
+                              Rejected
+                            </span>
+                          )}
+
+                        </div>
 
                       )}
 
                     </td>
 
                   </tr>
-
-                ))}
+                  );
+                })}
 
               </tbody>
 
@@ -635,6 +793,10 @@ function StatusBadge({ status }) {
 
   if (status === "PAID") {
     badgeStyle = styles.paid;
+  }
+
+  if (status === "REJECTED") {
+    badgeStyle = styles.rejected;
   }
 
   return (
@@ -789,7 +951,7 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "1200px",
+    minWidth: "1300px",
   },
 
   th: {
@@ -859,6 +1021,31 @@ const styles = {
     color: "#2864c7",
   },
 
+  rejected: {
+    background: "#fdeceb",
+    color: "#b42318",
+  },
+
+  actionRow: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+
+  editRow: {
+    display: "flex",
+    alignItems: "center",
+  },
+
+  editInput: {
+    width: "100px",
+    padding: "6px 8px",
+    borderRadius: "6px",
+    border: "1px solid #cdd8d1",
+    fontSize: "13px",
+  },
+
   approveButton: {
     border: "none",
     background: "#08783d",
@@ -881,6 +1068,39 @@ const styles = {
     cursor: "pointer",
   },
 
+  editButton: {
+    border: "1px solid #cdd8d1",
+    background: "#ffffff",
+    color: "#39443e",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    fontSize: "12px",
+    fontWeight: "700",
+    cursor: "pointer",
+  },
+
+  rejectButton: {
+    background: "#ffffff",
+    color: "#b42318",
+    border: "1px solid #f3c6c1",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    fontSize: "12px",
+    fontWeight: "700",
+    cursor: "pointer",
+  },
+
+  cancelButton: {
+    border: "1px solid #cdd8d1",
+    background: "#ffffff",
+    color: "#39443e",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    fontSize: "12px",
+    fontWeight: "700",
+    cursor: "pointer",
+  },
+
   buttonDisabled: {
     border: "none",
     background: "#aab8b0",
@@ -894,6 +1114,12 @@ const styles = {
 
   completed: {
     color: "#16803c",
+    fontSize: "12px",
+    fontWeight: "700",
+  },
+
+  rejectedText: {
+    color: "#b42318",
     fontSize: "12px",
     fontWeight: "700",
   },
