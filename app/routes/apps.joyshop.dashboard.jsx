@@ -460,6 +460,23 @@ function IconUser() {
   );
 }
 
+function IconSun() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="4.2" />
+      <path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconMoon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function IconHelp() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -513,6 +530,35 @@ export default function AmbassadorDashboard() {
   const [activeSection, setActiveSection] = useState("dashboard");
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("joyshop_dashboard_theme");
+      if (saved === "dark") {
+        setDarkMode(true);
+      }
+    } catch (error) {
+      // localStorage unavailable — default to light mode.
+    }
+  }, []);
+
+  function toggleDarkMode() {
+    setDarkMode((current) => {
+      const next = !current;
+
+      try {
+        window.localStorage.setItem(
+          "joyshop_dashboard_theme",
+          next ? "dark" : "light"
+        );
+      } catch (error) {
+        // Ignore — theme just won't persist across visits.
+      }
+
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!showProfileMenu && !showSettingsModal) {
@@ -634,7 +680,7 @@ export default function AmbassadorDashboard() {
   const maximum = Math.max(...chartData.map((item) => Number(item.value || 0)), 100);
 
   return (
-    <div className="dashboard">
+    <div className="dashboard" data-theme={darkMode ? "dark" : "light"}>
 
       <header className="topbar">
         <div className="logo">
@@ -642,7 +688,17 @@ export default function AmbassadorDashboard() {
           <span>ORGANIK</span>
         </div>
 
-        <div className="profile-menu-wrapper">
+        <div className="topbar-right">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleDarkMode}
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {darkMode ? <IconSun /> : <IconMoon />}
+          </button>
+
+          <div className="profile-menu-wrapper">
           <button
             type="button"
             className="top-profile-button"
@@ -684,6 +740,7 @@ export default function AmbassadorDashboard() {
               </button>
             </div>
           )}
+          </div>
         </div>
       </header>
 
@@ -1130,7 +1187,11 @@ svg { width: 100%; height: 100%; }
 .section-glow-flash { border-color: #4a9d63 !important; box-shadow: 0 0 0 4px rgba(20,83,45,0.14), 0 0 30px rgba(20,83,45,0.18); animation: sectionFlash 1.8s ease-in-out; }
 @keyframes sectionFlash { 0% { box-shadow: 0 0 0 0 rgba(20,83,45,0), 0 0 0 rgba(20,83,45,0); } 35% { box-shadow: 0 0 0 7px rgba(20,83,45,0.10), 0 0 30px rgba(20,83,45,0.20); } 100% { box-shadow: 0 0 0 3px rgba(20,83,45,0.10), 0 0 25px rgba(20,83,45,0.14); } }
 
-.topbar { height: 72px; background: #ffffff; border-bottom: 1px solid #eef1ec; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 50; }
+.topbar { height: 72px; background: #ffffff; border-bottom: 1px solid #eef1ec; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 50; transition: background .2s ease, border-color .2s ease; }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+.theme-toggle { width: 38px; height: 38px; border-radius: 50%; border: 1px solid #eef1ec; background: #f5faf6; color: #14532d; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.theme-toggle svg { width: 18px; height: 18px; }
+.theme-toggle:hover { background: #eaf3de; }
 .logo { color: #14532d; font-size: 19px; line-height: .95; font-weight: 800; letter-spacing: .5px; }
 .logo span { display: block; }
 .avatar { width: 38px; height: 38px; border-radius: 50%; background: #eaf3de; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
@@ -1296,4 +1357,114 @@ svg { width: 100%; height: 100%; }
   .commission-grid { grid-template-columns: 1fr; }
   .order-summary { flex-direction: column; }
 }
+
+/* =========================================================
+   DARK MODE
+========================================================= */
+
+.dashboard[data-theme="dark"] { background: #0f1613; color: #e5efe8; }
+.dashboard[data-theme="dark"] body { background: #0f1613; color: #e5efe8; }
+
+.dashboard[data-theme="dark"] .topbar { background: #141d19; border-bottom-color: #22302a; }
+.dashboard[data-theme="dark"] .logo { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .avatar { background: #1d2b24; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .top-profile-button:hover { background: #1a2620; }
+.dashboard[data-theme="dark"] .top-profile-info strong { color: #e5efe8; }
+.dashboard[data-theme="dark"] .profile-arrow { color: #8fa398; }
+.dashboard[data-theme="dark"] .profile-dropdown { background: #141d19; border-color: #22302a; box-shadow: 0 14px 35px rgba(0,0,0,.4); }
+.dashboard[data-theme="dark"] .profile-dropdown button { color: #d6e3da; }
+.dashboard[data-theme="dark"] .profile-dropdown button:hover { background: #1a2620; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .profile-dropdown .profile-logout { color: #ef7a6d; }
+.dashboard[data-theme="dark"] .profile-dropdown .profile-logout:hover { background: #2a1a19; }
+.dashboard[data-theme="dark"] .profile-dropdown-divider { background: #22302a; }
+.dashboard[data-theme="dark"] .theme-toggle { background: #1a2620; border-color: #22302a; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .theme-toggle:hover { background: #22302a; }
+
+.dashboard[data-theme="dark"] .sidebar { background: #141d19; border-right-color: #22302a; }
+.dashboard[data-theme="dark"] .nav-item { color: #9db2a5; }
+.dashboard[data-theme="dark"] .nav-item:hover { background: #1a2620; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .nav-item.active { background: #1d2b24; color: #6fcf8f; }
+
+.dashboard[data-theme="dark"] .main { background: #0f1613; }
+
+.dashboard[data-theme="dark"] .hero { background: #1a2620; border-color: #26382f; }
+.dashboard[data-theme="dark"] .hero-text h1 { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .hero-text p { color: #a9bcae; }
+.dashboard[data-theme="dark"] .hero-button { background: #2f8f57; }
+.dashboard[data-theme="dark"] .hero-button:hover { background: #257a48; }
+
+.dashboard[data-theme="dark"] .headline-stat { background: #141d19; border-color: #22302a; }
+.dashboard[data-theme="dark"] .headline-stat strong { color: #e5efe8; }
+.dashboard[data-theme="dark"] .headline-stat span { color: #8fa398; }
+.dashboard[data-theme="dark"] .icon-green { background: #1d2b24; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .icon-peach { background: #33241a; color: #e2a35f; }
+
+.dashboard[data-theme="dark"] .link-card,
+.dashboard[data-theme="dark"] .code-card,
+.dashboard[data-theme="dark"] .panel,
+.dashboard[data-theme="dark"] .small-panel { background: #141d19; border-color: #22302a; }
+.dashboard[data-theme="dark"] .link-card-heading { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .link-card-heading h3 { color: #e5efe8; }
+.dashboard[data-theme="dark"] .link-row input { background: #0f1613; border-color: #22302a; color: #c4d3c9; }
+.dashboard[data-theme="dark"] .copy-btn.outline { background: #141d19; color: #6fcf8f; border-color: #26382f; }
+.dashboard[data-theme="dark"] .code-value { background: #0f1613; border-color: #22302a; color: #e5efe8; }
+.dashboard[data-theme="dark"] .code-hint { color: #8fa398; }
+.dashboard[data-theme="dark"] .share-row span { color: #8fa398; }
+
+.dashboard[data-theme="dark"] .panel-heading h2 { color: #e5efe8; }
+.dashboard[data-theme="dark"] .panel-description { color: #8fa398; }
+.dashboard[data-theme="dark"] .section-label { color: #6fcf8f; }
+
+.dashboard[data-theme="dark"] .referral-table th { color: #8fa398; border-bottom-color: #22302a; }
+.dashboard[data-theme="dark"] .referral-table td { color: #d6e3da; border-bottom-color: #1c2822; }
+.dashboard[data-theme="dark"] .status-pill.placed { background: #1d2b24; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .status-pill.signed-up { background: #1c2038; color: #8b90e0; }
+
+.dashboard[data-theme="dark"] .payout-banner { background: #1a2620; border-color: #26382f; }
+.dashboard[data-theme="dark"] .payout-round-icon { background: #1d2b24; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .payout-banner h2 { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .payout-banner p { color: #8fa398; }
+.dashboard[data-theme="dark"] .payout-note { color: #a9bcae; }
+.dashboard[data-theme="dark"] .request-button:disabled { background: #2a3a32; }
+
+.dashboard[data-theme="dark"] .earnings-total strong { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .earnings-total span { color: #8fa398; }
+.dashboard[data-theme="dark"] .chart-grid { border-bottom-color: #22302a; }
+.dashboard[data-theme="dark"] .grid-line { border-top-color: #1c2822; }
+.dashboard[data-theme="dark"] .grid-line span { color: #6b7d72; }
+.dashboard[data-theme="dark"] .bar-label { color: #6b7d72; }
+.dashboard[data-theme="dark"] .bar-value { color: #6fcf8f; }
+
+.dashboard[data-theme="dark"] .commission-box { background: #1a2620; }
+.dashboard[data-theme="dark"] .commission-box span { color: #8fa398; }
+.dashboard[data-theme="dark"] .commission-box strong { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .paid-box strong { color: #6fa3e0; }
+.dashboard[data-theme="dark"] .order-summary > div { border-color: #22302a; }
+.dashboard[data-theme="dark"] .order-summary span { color: #8fa398; }
+
+.dashboard[data-theme="dark"] .share-row.wide .whatsapp { background: #16281c; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .share-row.wide .facebook { background: #16202e; color: #6fa3e0; }
+.dashboard[data-theme="dark"] .share-row.wide .instagram { background: #2c1a24; color: #e07aa8; }
+
+.dashboard[data-theme="dark"] .history-icon { background: #1d2b24; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .history-info span { color: #6b7d72; }
+.dashboard[data-theme="dark"] .history-row { border-bottom-color: #1c2822; }
+.dashboard[data-theme="dark"] .history-status.pending { background: #33241a; color: #e2a35f; }
+.dashboard[data-theme="dark"] .history-status.approved { background: #16202e; color: #6fa3e0; }
+.dashboard[data-theme="dark"] .history-status.paid { background: #16281c; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .history-status.cancelled { background: #26302b; color: #9db2a5; }
+
+.dashboard[data-theme="dark"] .empty-state { color: #8fa398; }
+.dashboard[data-theme="dark"] .empty-state strong { color: #c4d3c9; }
+
+.dashboard[data-theme="dark"] .small-icon { background: #1d2b24; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .small-panel h3 { color: #e5efe8; }
+.dashboard[data-theme="dark"] .small-panel p { color: #8fa398; }
+
+.dashboard[data-theme="dark"] .footer { background: #141d19; border-top-color: #22302a; }
+.dashboard[data-theme="dark"] .footer div { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .footer span { color: #6b7d72; }
+
+.dashboard[data-theme="dark"] .alert.success { background: #16281c; border-color: #1d3a28; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .alert.error { background: #2a1a19; border-color: #3a201f; color: #ef7a6d; }
 `;
