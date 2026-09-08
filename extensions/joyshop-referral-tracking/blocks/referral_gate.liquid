@@ -19,6 +19,7 @@
   const COOKIE_NAME = "joyshop_ref";
   const COOKIE_DAYS = 30;
   const LINKED_KEY = "joyshop_referral_linked";
+  const POST_LOGIN_REDIRECT_KEY = "joyshop_post_login_redirect";
 
   /* =========================================================
      1. REFERRAL LINK COPY FUNCTIONALITY
@@ -190,6 +191,27 @@
       false
     {% endif %};
 
+  /*
+   * If the customer is now logged in AND we stashed a
+   * post-login redirect destination before sending them to
+   * sign in/sign up, honor it now and clear the flag so this
+   * only fires once (not on every subsequent page load).
+   */
+  if (isLoggedIn) {
+    const pendingRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
+
+    if (pendingRedirect) {
+      sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+
+      console.log(
+        "JOYSHOP: Redirecting after login to:",
+        pendingRedirect
+      );
+
+      window.location.replace(pendingRedirect);
+    }
+  }
+
   async function handleReferral() {
 
     /* ----- Case A: ?ref= present in the URL ----- */
@@ -253,11 +275,18 @@
   }
 
   function redirectToSignIn() {
-    const returnTo =
-      window.location.pathname + window.location.search;
+    /*
+     * We use sessionStorage rather than a URL query param
+     * here, since Shopify's hosted sign-in/sign-up flow runs
+     * on a separate domain and may not reliably preserve
+     * arbitrary custom query params through that round-trip.
+     * sessionStorage persists across that redirect as long as
+     * it's the same browser tab, regardless of what happens
+     * on Shopify's side.
+     */
+    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, "/");
 
-    const loginUrl =
-      "/pages/account?return_to=" + encodeURIComponent(returnTo);
+    const loginUrl = "/pages/account";
 
     console.log("JOYSHOP: Redirecting to sign in:", loginUrl);
 
