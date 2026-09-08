@@ -192,12 +192,6 @@ export async function loader({ request }) {
       0
     );
 
-    const earnings = referralCommissions.reduce(
-      (total, commission) =>
-        total + Number(commission.commissionAmount || 0),
-      0
-    );
-
     return {
       id: referral.id,
       name: referral.referredName || "Customer",
@@ -208,9 +202,60 @@ export async function loader({ request }) {
       joinedAt:
         referral.joinedAt || referral.createdAt,
       orderValue,
-      earnings,
     };
   });
+
+  /*
+   * =====================================================
+   * PERIOD-BASED EARNINGS TOTALS
+   *
+   * Precomputed here (not fetched client-side) so switching
+   * between "This Month" / "Previous Month" / "Last 3 Months"
+   * on the dashboard is instant, no extra round-trip needed.
+   * Excludes REJECTED commissions from all totals.
+   * =====================================================
+   */
+
+  const now = new Date();
+
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  const previousMonthStart = new Date(
+    now.getFullYear(),
+    now.getMonth() - 1,
+    1
+  );
+
+  const last3MonthsStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+
+  function sumEarningsInRange(start, end) {
+    return commissions
+      .filter((commission) => commission.status !== "REJECTED")
+      .filter((commission) => {
+        const created = new Date(commission.createdAt);
+        return created >= start && created < end;
+      })
+      .reduce(
+        (total, commission) =>
+          total + Number(commission.commissionAmount || 0),
+        0
+      );
+  }
+
+  const totalEarningsAllTime = commissions
+    .filter((commission) => commission.status !== "REJECTED")
+    .reduce(
+      (total, commission) =>
+        total + Number(commission.commissionAmount || 0),
+      0
+    );
+
+  const earningsByPeriod = {
+    thisMonth: sumEarningsInRange(thisMonthStart, nextMonthStart),
+    previousMonth: sumEarningsInRange(previousMonthStart, thisMonthStart),
+    last3Months: sumEarningsInRange(last3MonthsStart, nextMonthStart),
+  };
 
   const groupedChartData = {};
 
@@ -304,6 +349,8 @@ export async function loader({ request }) {
       processedAt: payout.processedAt,
     })),
     referrals: referralsWithStats,
+    totalEarningsAllTime,
+    earningsByPeriod,
   };
 }
 
@@ -522,7 +569,15 @@ function IconCopy() {
 ========================================================= */
 
 export default function AmbassadorDashboard() {
-  const { ambassador, stats, payouts, referrals, chartData } = useLoaderData();
+  const {
+    ambassador,
+    stats,
+    payouts,
+    referrals,
+    chartData,
+    totalEarningsAllTime,
+    earningsByPeriod,
+  } = useLoaderData();
 
   const payoutFetcher = useFetcher();
 
@@ -531,6 +586,7 @@ export default function AmbassadorDashboard() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [earningsPeriod, setEarningsPeriod] = useState("thisMonth");
 
   useEffect(() => {
     try {
@@ -928,7 +984,6 @@ export default function AmbassadorDashboard() {
                       <th>Date</th>
                       <th>Status</th>
                       <th>Order Value</th>
-                      <th>Earnings</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -948,7 +1003,6 @@ export default function AmbassadorDashboard() {
                           </span>
                         </td>
                         <td>{referral.orderValue > 0 ? money(referral.orderValue) : "-"}</td>
-                        <td>{referral.earnings > 0 ? money(referral.earnings) : "-"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -987,8 +1041,41 @@ export default function AmbassadorDashboard() {
               </div>
 
               <div className="earnings-total">
-                <strong>{money(stats.commission)}</strong>
-                <span>Total referral commission</span>
+                <strong>{money(totalEarningsAllTime)}</strong>
+                <span>Total Earnings</span>
+              </div>
+
+              <div className="earnings-period-tabs">
+                <button
+                  type="button"
+                  className={earningsPeriod === "thisMonth" ? "earnings-period-tab active" : "earnings-period-tab"}
+                  onClick={() => setEarningsPeriod("thisMonth")}
+                >
+                  This Month
+                </button>
+                <button
+                  type="button"
+                  className={earningsPeriod === "previousMonth" ? "earnings-period-tab active" : "earnings-period-tab"}
+                  onClick={() => setEarningsPeriod("previousMonth")}
+                >
+                  Previous Month
+                </button>
+                <button
+                  type="button"
+                  className={earningsPeriod === "last3Months" ? "earnings-period-tab active" : "earnings-period-tab"}
+                  onClick={() => setEarningsPeriod("last3Months")}
+                >
+                  Last 3 Months
+                </button>
+              </div>
+
+              <div className="earnings-period-value">
+                <strong>{money(earningsByPeriod[earningsPeriod] || 0)}</strong>
+                <span>
+                  {earningsPeriod === "thisMonth" && "Earnings this month"}
+                  {earningsPeriod === "previousMonth" && "Earnings last month"}
+                  {earningsPeriod === "last3Months" && "Earnings over the last 3 months"}
+                </span>
               </div>
 
               {chartData.length === 0 ? (
@@ -1288,6 +1375,15 @@ svg { width: 100%; height: 100%; }
 .earnings-total { margin-top: 10px; }
 .earnings-total strong { display: block; font-size: 21px; color: #14532d; }
 .earnings-total span { display: block; margin-top: 3px; font-size: 10px; color: #77827b; }
+
+.earnings-period-tabs { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.earnings-period-tab { border: 1px solid #e4e9e5; background: #fbfcfb; color: #5f6c64; padding: 7px 14px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.earnings-period-tab:hover { background: #f4f9ee; }
+.earnings-period-tab.active { background: #14532d; border-color: #14532d; color: #ffffff; }
+
+.earnings-period-value { margin-top: 16px; padding: 14px 16px; background: #f7faf7; border-radius: 10px; }
+.earnings-period-value strong { display: block; font-size: 24px; color: #14532d; }
+.earnings-period-value span { display: block; margin-top: 3px; font-size: 11px; color: #77827b; }
 .chart { height: 220px; margin-top: 14px; }
 .chart-grid { position: relative; height: 190px; margin-left: 40px; border-bottom: 1px solid #eef1ec; }
 .grid-line { position: absolute; left: 0; right: 0; border-top: 1px dashed #eef1ec; }
@@ -1429,6 +1525,12 @@ svg { width: 100%; height: 100%; }
 
 .dashboard[data-theme="dark"] .earnings-total strong { color: #6fcf8f; }
 .dashboard[data-theme="dark"] .earnings-total span { color: #8fa398; }
+.dashboard[data-theme="dark"] .earnings-period-tab { background: #0f1613; border-color: #22302a; color: #9db2a5; }
+.dashboard[data-theme="dark"] .earnings-period-tab:hover { background: #1a2620; }
+.dashboard[data-theme="dark"] .earnings-period-tab.active { background: #2f8f57; border-color: #2f8f57; color: #ffffff; }
+.dashboard[data-theme="dark"] .earnings-period-value { background: #1a2620; }
+.dashboard[data-theme="dark"] .earnings-period-value strong { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .earnings-period-value span { color: #8fa398; }
 .dashboard[data-theme="dark"] .chart-grid { border-bottom-color: #22302a; }
 .dashboard[data-theme="dark"] .grid-line { border-top-color: #1c2822; }
 .dashboard[data-theme="dark"] .grid-line span { color: #6b7d72; }

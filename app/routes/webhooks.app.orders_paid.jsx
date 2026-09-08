@@ -428,57 +428,151 @@ export const action = async ({ request }) => {
 
     /*
      * =====================================================
-     * 6. LOAD COMMISSION SETTINGS
+     * 6. DETERMINE COMMISSION SLAB RATE
+     *
+     * Commission is no longer a flat per-order rate. Instead,
+     * it's based on the ambassador's TOTAL referred sales for
+     * the current calendar month:
+     *
+     *   Up to ₹30,000        -> 7%
+     *   ₹30,001 - ₹60,000    -> 10%
+     *   Above ₹60,001        -> 15%
+     *
+     * The rate is a FLAT rate applied to the entire monthly
+     * total (not marginal/bracketed) — e.g. ₹50,000 total in a
+     * month pays 10% on the full ₹50,000, not 7% on the first
+     * 30k and 10% on the remaining 20k.
+     *
+     * This recalculates live as each new order comes in: once
+     * the monthly total crosses into a new slab, all of that
+     * ambassador's still-PENDING commissions for the current
+     * month are updated to the new rate. Commissions already
+     * APPROVED or PAID are left untouched, since those have
+     * already been reviewed/paid out and shouldn't silently
+     * change.
      * =====================================================
      */
 
-    const settings =
-      await db.referralSettings.findUnique({
-        where: {
-          shop,
-        },
-      });
+    function getSlabRate(monthlyTotal) {
+      if (monthlyTotal <= 30000) return 7;
+      if (monthlyTotal <= 60000) return 10;
+      return 15;
+    }
 
-    const commissionRate =
-      settings?.commissionRate ?? 10;
+    const now = new Date();
+    const monthStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+    const monthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      1,
+      0,
+      0,
+      0,
+      0
+    );
 
-    const commissionAmount =
-      (orderAmount *
-        commissionRate) /
-      100;
+    console.log(
+      "Calculating monthly commission slab for period:",
+      monthStart.toISOString(),
+      "to",
+      monthEnd.toISOString()
+    );
 
     /*
      * =====================================================
-     * 7. CREATE COMMISSION
+     * 7. CREATE THIS ORDER'S COMMISSION ROW (placeholder rate)
+     *
+     * Created first so it's included in the monthly total
+     * calculated just below. Its rate/amount get corrected in
+     * the recalculation step that follows.
      * =====================================================
      */
 
-    const commission =
-      await db.commission.create({
+    const commission = await db.commission.create({
+      data: {
+        shop,
+        ambassadorId: ambassador.id,
+        referralId: referral.id,
+        customerId: customerId || referral.referredCustomerId,
+        orderId,
+        orderAmount,
+        commissionRate: 0,
+        commissionAmount: 0,
+        status: "PENDING",
+      },
+    });
+
+    /*
+     * =====================================================
+     * 8. RECALCULATE MONTHLY TOTAL AND APPLY CORRECT SLAB
+     * =====================================================
+     */
+
+    const monthlyCommissions = await db.commission.findMany({
+      where: {
+        shop,
+        ambassadorId: ambassador.id,
+        status: { not: "REJECTED" },
+        createdAt: {
+          gte: monthStart,
+          lt: monthEnd,
+        },
+      },
+    });
+
+    const monthlyTotal = monthlyCommissions.reduce(
+      (sum, item) => sum + Number(item.orderAmount || 0),
+      0
+    );
+
+    const commissionRate = getSlabRate(monthlyTotal);
+
+    console.log(
+      "Ambassador monthly referred sales total:",
+      monthlyTotal,
+      "| Slab rate:",
+      commissionRate + "%"
+    );
+
+    /*
+     * Update every still-PENDING commission for this ambassador
+     * in the current month to the new rate — including the one
+     * we just created above.
+     */
+    const pendingThisMonth = monthlyCommissions.filter(
+      (item) => item.status === "PENDING"
+    );
+
+    for (const item of pendingThisMonth) {
+      const recalculatedAmount =
+        (Number(item.orderAmount || 0) * commissionRate) / 100;
+
+      await db.commission.update({
+        where: { id: item.id },
         data: {
-          shop,
-
-          ambassadorId:
-            ambassador.id,
-
-          referralId:
-            referral.id,
-
-          customerId:
-            customerId ||
-            referral.referredCustomerId,
-
-          orderId,
-
-          orderAmount,
-
           commissionRate,
-
-          commissionAmount,
-
-          status: "PENDING",
+          commissionAmount: recalculatedAmount,
         },
       });
+    }
+
+    const commissionAmount =
+      (orderAmount * commissionRate) / 100;
+
+    console.log(
+      "This order's commission:",
+      commissionAmount,
+      "at",
+      commissionRate + "%"
+    );
 
     /*
      * =====================================================
