@@ -146,7 +146,7 @@ export const action = async ({ request }) => {
      * straight to the application form instead.
      */
     try {
-      await db.ambassadorEligibility.updateMany({
+      const updateResult = await db.ambassadorEligibility.updateMany({
         where: {
           shop,
           customerId,
@@ -155,6 +155,11 @@ export const action = async ({ request }) => {
           interestedAt: new Date(),
         },
       });
+
+      console.log(
+        "interestedAt update result (rows affected):",
+        updateResult.count
+      );
     } catch (updateError) {
       console.error(
         "Failed to record interestedAt (non-fatal):",
