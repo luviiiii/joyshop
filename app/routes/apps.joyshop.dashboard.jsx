@@ -257,6 +257,57 @@ export async function loader({ request }) {
     last3Months: sumEarningsInRange(last3MonthsStart, nextMonthStart),
   };
 
+  /*
+   * =====================================================
+   * MONTHLY ORDER VALUE + COMMISSION TIER INFO
+   *
+   * Mirrors the slab logic in webhooks.app.orders_paid.jsx —
+   * shown here so the ambassador can see what rate they're
+   * currently earning and what it takes to reach the next
+   * tier.
+   * =====================================================
+   */
+
+  const monthlyOrderValue = commissions
+    .filter((commission) => commission.status !== "REJECTED")
+    .filter((commission) => {
+      const created = new Date(commission.createdAt);
+      return created >= thisMonthStart && created < nextMonthStart;
+    })
+    .reduce(
+      (total, commission) => total + Number(commission.orderAmount || 0),
+      0
+    );
+
+  function getSlabInfo(monthlyTotal) {
+    if (monthlyTotal <= 30000) {
+      return {
+        currentRate: 7,
+        nextRate: 10,
+        nextThreshold: 30000,
+        isMaxTier: false,
+      };
+    }
+
+    if (monthlyTotal <= 60000) {
+      return {
+        currentRate: 10,
+        nextRate: 15,
+        nextThreshold: 60000,
+        isMaxTier: false,
+      };
+    }
+
+    return {
+      currentRate: 15,
+      nextRate: null,
+      nextThreshold: null,
+      isMaxTier: true,
+    };
+  }
+
+  const slabInfo = getSlabInfo(monthlyOrderValue);
+
   const groupedChartData = {};
 
   commissions.forEach((commission) => {
@@ -351,6 +402,8 @@ export async function loader({ request }) {
     referrals: referralsWithStats,
     totalEarningsAllTime,
     earningsByPeriod,
+    monthlyOrderValue,
+    slabInfo,
   };
 }
 
@@ -577,6 +630,8 @@ export default function AmbassadorDashboard() {
     chartData,
     totalEarningsAllTime,
     earningsByPeriod,
+    monthlyOrderValue,
+    slabInfo,
   } = useLoaderData();
 
   const payoutFetcher = useFetcher();
@@ -926,10 +981,39 @@ export default function AmbassadorDashboard() {
             <div className="headline-stat">
               <div className="headline-stat-icon icon-green">₹</div>
               <div>
-                <strong>{money(stats.commission)}</strong>
+                <strong>{money(totalEarningsAllTime)}</strong>
                 <span>Total Earnings</span>
               </div>
             </div>
+
+            <div className="headline-stat">
+              <div className="headline-stat-icon icon-peach">₹</div>
+              <div>
+                <strong>{money(monthlyOrderValue)}</strong>
+                <span>Order Value This Month</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="tier-banner">
+            {slabInfo.isMaxTier ? (
+              <p>
+                🎉 You're earning our top rate of <strong>15% commission</strong> on
+                every referred order this month — nice work!
+              </p>
+            ) : (
+              <p>
+                You're currently earning <strong>{slabInfo.currentRate}% commission</strong> on
+                this month's referred orders (₹{monthlyOrderValue.toLocaleString("en-IN")} so far).
+                Get your referrals to <strong>₹{slabInfo.nextThreshold.toLocaleString("en-IN")}</strong> in
+                orders this month and your rate jumps to <strong>{slabInfo.nextRate}%</strong> —
+                keep sharing your link!
+              </p>
+            )}
+
+            <p className="tier-banner-scale">
+              Up to ₹30,000 → 7% &nbsp;•&nbsp; ₹30,001–₹60,000 → 10% &nbsp;•&nbsp; ₹60,001+ → 15%
+            </p>
           </section>
 
           <section className="link-only-grid">
@@ -1317,7 +1401,13 @@ svg { width: 100%; height: 100%; }
 .alert.success { background: #e7f8ec; border: 1px solid #bce5c7; color: #14532d; }
 .alert.error { background: #fff0ef; border: 1px solid #f1c5c0; color: #b42318; }
 
-.headline-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+.headline-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+
+.tier-banner { background: linear-gradient(135deg,#f3f9e7 0%,#ffffff 72%); border: 1px solid #dcebc8; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; }
+.tier-banner p { margin: 0; font-size: 13.5px; color: #1f2d22; line-height: 1.6; }
+.tier-banner p strong { color: #14532d; }
+.tier-banner-scale { margin-top: 8px !important; font-size: 11.5px !important; color: #6b7a70 !important; }
+.tier-banner-scale strong { color: inherit !important; }
 .headline-stat { background: #ffffff; border: 1px solid #eef1ec; border-radius: 12px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; }
 .headline-stat-icon { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 10px; font-weight: 800; font-size: 15px; flex-shrink: 0; }
 .icon-green { background: #eaf3de; color: #14532d; }
@@ -1444,7 +1534,7 @@ svg { width: 100%; height: 100%; }
   .sidebar { width: 190px; }
   .main { padding: 20px; }
   .two-grid { grid-template-columns: 1fr; }
-  .headline-stats { grid-template-columns: 1fr; }
+  .headline-stats { grid-template-columns: repeat(2, 1fr); }
   .hero-visual { display: none; }
 }
 
@@ -1488,6 +1578,10 @@ svg { width: 100%; height: 100%; }
 .dashboard[data-theme="dark"] .hero-text p { color: #a9bcae; }
 .dashboard[data-theme="dark"] .hero-button { background: #2f8f57; }
 .dashboard[data-theme="dark"] .hero-button:hover { background: #257a48; }
+.dashboard[data-theme="dark"] .tier-banner { background: #1a2620; border-color: #26382f; }
+.dashboard[data-theme="dark"] .tier-banner p { color: #d6e3da; }
+.dashboard[data-theme="dark"] .tier-banner p strong { color: #6fcf8f; }
+.dashboard[data-theme="dark"] .tier-banner-scale { color: #8fa398 !important; }
 
 .dashboard[data-theme="dark"] .headline-stat { background: #141d19; border-color: #22302a; }
 .dashboard[data-theme="dark"] .headline-stat strong { color: #e5efe8; }
