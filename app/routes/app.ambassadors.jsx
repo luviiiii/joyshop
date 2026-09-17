@@ -4,7 +4,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 // Storefront domain used to build the shareable referral link.
-const STOREFRONT_DOMAIN = "https://www.justorganik.co";
+const STOREFRONT_DOMAIN = "https://www.justorganik.com";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);

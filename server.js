@@ -9,7 +9,7 @@ const app = express();
  *
  * Pages loaded through Shopify's App Proxy (e.g.
  * /apps/joyshop/dashboard) are displayed on the STOREFRONT
- * domain (justorganik.co), while the actual JS/CSS files live
+ * domain (justorganik.com), while the actual JS/CSS files live
  * on THIS app's domain (Render). Browsers block that
  * cross-origin script load unless the response explicitly
  * allows it — this middleware adds that permission.

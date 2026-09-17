@@ -8,8 +8,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
  * Update these to match your real sending address and
  * the live application page URL.
  */
-const FROM_ADDRESS = "JOYSHOP Ambassador Program <ambassador@justorganik.co>";
-const APPLICATION_PAGE_URL = "https://www.justorganik.co/pages/become-an-ambassador";
+const FROM_ADDRESS = "JOYSHOP Ambassador Program <ambassador@justorganik.com>";
+const APPLICATION_PAGE_URL = "https://www.justorganik.com/pages/become-an-ambassador";
 
 function customerGid(customerId) {
   if (!customerId) return null;

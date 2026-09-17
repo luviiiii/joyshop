@@ -687,7 +687,7 @@ export default function AmbassadorDashboard() {
     return () => document.removeEventListener("keydown", handleEscape);
   }, [showProfileMenu, showSettingsModal]);
 
-  const referralLink = `https://justorganik.co/apps/joyshop/ref/${ambassador.referralCode}`;
+  const referralLink = `https://justorganik.com/apps/joyshop/ref/${ambassador.referralCode}`;
 
   const actionData = payoutFetcher.data;
   const isSubmitting = payoutFetcher.state === "submitting";
