@@ -52,33 +52,103 @@ function createReferralCode(name) {
  * =====================================================
  */
 
-function buildWelcomeEmail({ name, referralCode, referralLink }) {
-  const subject = `Welcome to the JOYSHOP Ambassador Program, ${name}!`;
+function buildWelcomeEmail({ name, referralCode, referralLink, kycLink }) {
+  const subject = "You've discovered JOY. Now, complete your KYC.";
 
   const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; color: #1f2d22;">
-      <h2 style="color: #14532d;">Hi ${name},</h2>
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2d22; line-height: 1.6;">
+
+      <p>Dear ${name},</p>
 
       <p>
-        You're officially a Just Organik Ambassador! Start sharing
-        your referral link below to earn commission on every order
-        your friends place.
-      </p>
-
-      <p style="text-align: center; margin: 28px 0;">
-        <span style="display: inline-block; background: #f5faf6; border: 2px dashed #14532d; padding: 12px 20px; border-radius: 8px; font-weight: bold; font-size: 16px; letter-spacing: 0.5px; color: #14532d; word-break: break-all;">
-          ${referralLink}
-        </span>
+        You've discovered JOY. Now, remember to complete your KYC
+        within 7 days.
       </p>
 
       <p>
-        Your referral code: <strong>${referralCode}</strong>
+        As a JOY Ambassador, we welcome you to a community of people
+        who believe that healthy food free from chemicals and
+        pilferage is everyone's right.
+      </p>
+
+      <h3 style="color: #14532d; margin-top: 28px;">What's in it for you?</h3>
+
+      <p>
+        <strong>Earn Monthly Rewards</strong><br />
+        Earn 7%&ndash;15% rewards on qualifying sales generated
+        through your personal referral link or code.
+      </p>
+
+      <p>
+        <strong>Share the JOY</strong><br />
+        Your friends and family can receive a &#8377;200 credit on
+        their first qualifying order when they join through your
+        referral.
+      </p>
+
+      <p>
+        <strong>Be Part of a Community</strong><br />
+        Connect with a growing community that believes in making
+        genuine, thoughtful and conscious food choices.
+      </p>
+
+      <p>
+        <strong>Dedicated Support</strong><br />
+        We're here to help you get started, understand the
+        programme and make the most of your Ambassador journey.
+      </p>
+
+      <h3 style="color: #14532d; margin-top: 28px;">A few things to know</h3>
+
+      <ul style="padding-left: 20px;">
+        <li>
+          Your referral link/code is personal to you and should be
+          shared within your genuine personal, social or
+          professional community.
+        </li>
+        <li>
+          Rewards are calculated on completed, qualifying referred
+          sales.
+        </li>
+        <li>
+          Ambassadors represent and recommend Just Organik &mdash;
+          they do not act as employees, agents or distributors.
+        </li>
+        <li>
+          You need to maintain &#8377;5,000 in qualifying purchases
+          at MRP over every 3-month period to remain eligible for
+          Ambassador rewards.
+        </li>
+      </ul>
+
+      <p>
+        Kindly upload your KYC documents &mdash; Aadhaar Card, PAN
+        Card and Cancelled Cheque/Bank Statement &mdash; within 7
+        days to enable you to receive rewards from your referrals.
+      </p>
+
+      <p style="text-align: center; margin: 32px 0;">
+        <a
+          href="${kycLink}"
+          style="display: inline-block; background: #14532d; color: #ffffff; padding: 14px 28px; border-radius: 8px; font-weight: bold; font-size: 15px; text-decoration: none;"
+        >
+          Complete Your KYC
+        </a>
       </p>
 
       <p style="font-size: 13px; color: #6b7a70;">
-        Log in to your account anytime to view your full ambassador
-        dashboard, track referrals, and see your earnings.
+        Your referral link:
+        <a href="${referralLink}" style="color: #14532d;">${referralLink}</a><br />
+        Your referral code: <strong>${referralCode}</strong>
       </p>
+
+      <p>Welcome to JOY.</p>
+
+      <p>
+        Warm regards,<br />
+        Team Just Organik
+      </p>
+
     </div>
   `;
 
@@ -88,11 +158,13 @@ function buildWelcomeEmail({ name, referralCode, referralLink }) {
 async function sendWelcomeEmail(email, name, referralCode) {
   try {
     const referralLink = `${STOREFRONT_DOMAIN}/?ref=${encodeURIComponent(referralCode)}`;
+    const kycLink = `${STOREFRONT_DOMAIN}/pages/become-an-ambassador`;
 
     const { subject, html } = buildWelcomeEmail({
       name,
       referralCode,
       referralLink,
+      kycLink,
     });
 
     await resend.emails.send({
