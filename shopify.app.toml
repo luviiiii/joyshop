@@ -49,7 +49,7 @@ topics = ["orders/paid"]
 
 [auth]
 redirect_urls = [
-  "https://joyshop.onrender.com/auth/callback"
+  "https://joyshop-production.up.railway.app/auth/callback"
 ]
 
 [build]
