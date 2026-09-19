@@ -56,6 +56,6 @@ redirect_urls = [
 automatically_update_urls_on_dev = true
 
 [app_proxy]
-url = "https://joyshop-production.up.railway.app"
+url = "https://joyshop-production.up.railway.app/apps/joyshop"
 prefix = "apps"
 subpath = "joyshop"
