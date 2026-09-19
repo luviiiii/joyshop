@@ -1,5 +1,5 @@
 client_id = "ac2cf1808f44b876acba801172b6b9f6"
-application_url = "https://joyshop.onrender.com"
+application_url = "https://joyshop-production.up.railway.app"
 embedded = true
 name = "JOYSHOP"
 
@@ -56,6 +56,6 @@ redirect_urls = [
 automatically_update_urls_on_dev = true
 
 [app_proxy]
-url = "/apps/joyshop"
+url = "https://joyshop-production.up.railway.app"
 prefix = "apps"
 subpath = "joyshop"
