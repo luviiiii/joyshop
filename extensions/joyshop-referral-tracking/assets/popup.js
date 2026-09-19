@@ -19,8 +19,6 @@
 (function () {
   "use strict";
 
-  const SESSION_SEEN_KEY = "joyshop_ambassador_popup_seen";
-
   /*
    * How close to the bottom (in px) counts as "scrolled to
    * the end" for the terms box.
@@ -257,25 +255,15 @@
     };
 
     /*
-     * Only ever attempt the AUTOMATIC eligibility check once per
-     * browser session so we don't spam the endpoint on every
-     * page view. This does not affect manual opens above.
+     * Check eligibility and show immediately every time the
+     * page loads, with no session-based "only once" gating.
      */
-
-    if (sessionStorage.getItem(SESSION_SEEN_KEY) === "true") {
-      return;
-    }
 
     const data = await checkEligibility();
 
-    if (!data || !data.eligible) {
-      sessionStorage.setItem(SESSION_SEEN_KEY, "true");
-      return;
+    if (data && data.eligible) {
+      showOverlay(stepOne.overlay);
     }
-
-    sessionStorage.setItem(SESSION_SEEN_KEY, "true");
-
-    showOverlay(stepOne.overlay);
   }
 
   if (document.readyState === "loading") {

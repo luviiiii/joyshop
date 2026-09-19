@@ -68,17 +68,6 @@ export const loader = async ({ request }) => {
     }
 
     /*
-     * Only show popup once.
-     */
-
-    if (eligibility.notifiedAt) {
-      return Response.json({
-        eligible: false,
-        alreadyNotified: true,
-      });
-    }
-
-    /*
      * Load the current commission rate so the popup can
      * display the real number instead of a hardcoded value.
      */
@@ -92,20 +81,6 @@ export const loader = async ({ request }) => {
 
     const commissionRate =
       settings?.commissionRate ?? 10;
-
-    /*
-     * Mark notification as shown.
-     */
-
-    await db.ambassadorEligibility.update({
-      where: {
-        id: eligibility.id,
-      },
-
-      data: {
-        notifiedAt: new Date(),
-      },
-    });
 
     return Response.json({
       eligible: true,
