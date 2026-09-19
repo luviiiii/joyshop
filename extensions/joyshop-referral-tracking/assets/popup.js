@@ -58,27 +58,6 @@
     document.body.style.overflow = "";
   }
 
-  async function checkEligibility() {
-    try {
-      const response = await fetch("/apps/joyshop/eligibility", {
-        method: "GET",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        return null;
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("JOYSHOP eligibility check failed:", error);
-      return null;
-    }
-  }
-
   async function becomeAmbassador() {
     try {
       const response = await fetch("/apps/joyshop/become-ambassador", {
@@ -252,26 +231,17 @@
 
     /*
      * Expose a global manual-open function so other pages (the
-     * account page's "Become an Ambassador" button, for example)
-     * can reopen this same popup on demand, bypassing the
-     * once-per-session automatic check entirely.
+     * account page's "Become an Ambassador" button) can open
+     * this popup. This is now the ONLY way the popup ever
+     * appears — there is no automatic on-load check anymore.
+     * Someone who closes it or clicks "Maybe Later" simply
+     * won't see it again unless they click that button.
      */
     window.JoyshopAmbassadorPopup = {
       open: function () {
         showOverlay(stepOne.overlay);
       },
     };
-
-    /*
-     * Check eligibility and show immediately every time the
-     * page loads, with no session-based "only once" gating.
-     */
-
-    const data = await checkEligibility();
-
-    if (data && data.eligible) {
-      showOverlay(stepOne.overlay);
-    }
   }
 
   if (document.readyState === "loading") {
