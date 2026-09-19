@@ -79,9 +79,9 @@
     }
   }
 
-  async function notifyInterest() {
+  async function becomeAmbassador() {
     try {
-      const response = await fetch("/apps/joyshop/notify-interest", {
+      const response = await fetch("/apps/joyshop/become-ambassador", {
         method: "POST",
         credentials: "same-origin",
         headers: {
@@ -91,7 +91,7 @@
 
       return await response.json();
     } catch (error) {
-      console.error("JOYSHOP notify-interest failed:", error);
+      console.error("JOYSHOP become-ambassador failed:", error);
       return {
         success: false,
         error: "Something went wrong. Please try again.",
@@ -217,18 +217,26 @@
         const originalText = stepTwo.ctaBtn.innerHTML;
 
         stepTwo.ctaBtn.disabled = true;
-        stepTwo.ctaBtn.textContent = "Sending...";
+        stepTwo.ctaBtn.textContent = "Setting up your account...";
 
-        const result = await notifyInterest();
+        const result = await becomeAmbassador();
 
         if (result.success) {
-          setMessage(
-            stepTwo,
-            `We've sent an application link to ${result.email}. Please check your inbox! Keep your PAN card, Aadhaar card, and a cancelled cheque handy — you'll need photos of all three to complete your application.`,
-            false
-          );
+          if (result.alreadyAmbassador) {
+            setMessage(
+              stepTwo,
+              `You're already an ambassador! Your referral code is ${result.referralCode}.`,
+              false
+            );
+          } else {
+            setMessage(
+              stepTwo,
+              `You're officially a Just Organik Ambassador! We've sent your referral link and code (${result.referralCode}) to your email — check your inbox.`,
+              false
+            );
+          }
 
-          stepTwo.ctaBtn.textContent = "Email Sent!";
+          stepTwo.ctaBtn.textContent = "You're an Ambassador!";
         } else {
           setMessage(
             stepTwo,
