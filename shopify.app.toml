@@ -47,15 +47,6 @@ topics = ["app/scopes_update"]
 uri = "/webhooks/app/orders_paid"
 topics = ["orders/paid"]
 
-[events]
-api_version = "unstable"
-
-[[events.subscription]]
-handle = "app_events"
-topic = "Product"
-actions = ["update"]
-uri = "/events/app/products"
-
 [auth]
 redirect_urls = [
   "https://joyshop.onrender.com/auth/callback"
