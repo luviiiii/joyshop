@@ -747,7 +747,7 @@ export default function AmbassadorDashboard() {
   }
 
   function shareWhatsApp() {
-    const message = `Check out Just Organik and use my referral link:\n\n${referralLink}`;
+    const message = `Discover Just Organik — certified organic groceries, delivered home.\n\nUse my link to get your welcome credit on your first order:\n${referralLink}`;
     window.open(
       `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`,
       "_blank",
