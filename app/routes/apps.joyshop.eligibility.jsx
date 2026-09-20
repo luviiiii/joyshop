@@ -68,6 +68,39 @@ export const loader = async ({ request }) => {
     }
 
     /*
+     * The automatic popup only shows a maximum of 5 times
+     * total. After that, this endpoint stops returning
+     * eligible: true, so popup.js's automatic on-load check
+     * stays quiet — but the "Become an Ambassador" button on
+     * the account page opens the popup directly, completely
+     * independent of this limit, so it's always still
+     * reachable manually.
+     */
+
+    const POPUP_SHOW_LIMIT = 5;
+
+    if (eligibility.popupShownCount >= POPUP_SHOW_LIMIT) {
+      return Response.json({
+        eligible: false,
+        popupLimitReached: true,
+      });
+    }
+
+    await db.ambassadorEligibility.update({
+      where: {
+        shop_customerId: {
+          shop,
+          customerId,
+        },
+      },
+      data: {
+        popupShownCount: {
+          increment: 1,
+        },
+      },
+    });
+
+    /*
      * Load the current commission rate so the popup can
      * display the real number instead of a hardcoded value.
      */

@@ -79,13 +79,29 @@ export const action = async ({ request }) => {
      * Order amount
      *
      * IMPORTANT:
-     * This is the amount of THIS order only — used both for
-     * commission calculation AND ambassador eligibility, since
-     * eligibility is based on a single qualifying order, not
-     * cumulative lifetime spend.
+     * Two DIFFERENT amounts are used here, for two different
+     * purposes:
+     *
+     * - eligibilityOrderAmount: the pre-discount, full-rate
+     *   subtotal (total_line_items_price). Used ONLY to check
+     *   whether this order makes the customer eligible to
+     *   become an ambassador.
+     *
+     * - commissionOrderAmount: what the customer actually paid
+     *   (current_total_price, after discounts). Used ONLY for
+     *   commission calculations — the ambassador's monthly
+     *   slab totals and this order's commission amount.
      */
 
-    const orderAmount = Number(
+    const eligibilityOrderAmount = Number(
+      order.total_line_items_price ||
+        order.subtotal_price ||
+        order.current_total_price ||
+        order.total_price ||
+        0
+    );
+
+    const commissionOrderAmount = Number(
       order.current_total_price ||
         order.total_price ||
         0
@@ -102,8 +118,13 @@ export const action = async ({ request }) => {
     );
 
     console.log(
-      "Order Amount:",
-      orderAmount
+      "Eligibility amount (pre-discount subtotal):",
+      eligibilityOrderAmount
+    );
+
+    console.log(
+      "Commission amount (actual amount paid):",
+      commissionOrderAmount
     );
 
     if (!orderId) {
@@ -120,8 +141,10 @@ export const action = async ({ request }) => {
      *
      * Eligibility rule: a SINGLE order of ₹10,000 or more
      * qualifies a customer to become an ambassador. This is
-     * checked against orderAmount (this order), NOT the
-     * customer's cumulative lifetime spend.
+     * checked against eligibilityOrderAmount (the pre-discount
+     * subtotal of this order), NOT the customer's cumulative
+     * lifetime spend, and NOT what they actually paid after
+     * any discount.
      * =====================================================
      */
 
@@ -158,7 +181,7 @@ export const action = async ({ request }) => {
 
         console.log(
           "This order's amount:",
-          orderAmount
+          eligibilityOrderAmount
         );
 
         console.log(
@@ -183,7 +206,7 @@ export const action = async ({ request }) => {
          */
 
         const isEligible =
-          orderAmount >= eligibilityAmount;
+          eligibilityOrderAmount >= eligibilityAmount;
 
         /*
          * Get existing eligibility record
@@ -217,7 +240,7 @@ export const action = async ({ request }) => {
 
             update: {
               eligible: true,
-              totalSpent: orderAmount,
+              totalSpent: eligibilityOrderAmount,
 
               /*
                * Once eligible, stay eligible (until they
@@ -240,7 +263,7 @@ export const action = async ({ request }) => {
               shop,
               customerId,
               eligible: true,
-              totalSpent: orderAmount,
+              totalSpent: eligibilityOrderAmount,
               eligibleAt: new Date(),
             },
           });
@@ -256,7 +279,7 @@ export const action = async ({ request }) => {
 
           console.log(
             "Qualifying order amount:",
-            orderAmount
+            eligibilityOrderAmount
           );
         } else if (!existingAmbassador) {
           /*
@@ -287,7 +310,7 @@ export const action = async ({ request }) => {
             create: {
               shop,
               customerId,
-              totalSpent: orderAmount,
+              totalSpent: eligibilityOrderAmount,
               eligible: false,
               eligibleAt: null,
             },
@@ -503,7 +526,7 @@ export const action = async ({ request }) => {
         referralId: referral.id,
         customerId: customerId || referral.referredCustomerId,
         orderId,
-        orderAmount,
+        orderAmount: commissionOrderAmount,
         commissionRate: 0,
         commissionAmount: 0,
         status: "PENDING",
@@ -565,7 +588,7 @@ export const action = async ({ request }) => {
     }
 
     const commissionAmount =
-      (orderAmount * commissionRate) / 100;
+      (commissionOrderAmount * commissionRate) / 100;
 
     console.log(
       "This order's commission:",

@@ -221,7 +221,7 @@ model AmbassadorEligibility {
   eligibleAt DateTime?
   notifiedAt DateTime?
   interestedAt DateTime?
-
+  popupShownCount Int @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
