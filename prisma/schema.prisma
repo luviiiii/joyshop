@@ -263,3 +263,12 @@ model AmbassadorApplication {
   @@index([shop])
   @@index([status])
 }
+
+model NewCustomerAccount {
+  id         String   @id @default(cuid())
+  shop       String
+  customerId String
+  createdAt  DateTime @default(now())
+
+  @@unique([shop, customerId])
+}
