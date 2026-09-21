@@ -249,21 +249,6 @@ export const action = async ({ request }) => {
     }
 
     /*
-     * Already an active ambassador — no need to apply again.
-     */
-
-    const existingAmbassador = await db.ambassador.findFirst({
-      where: { shop, customerId },
-    });
-
-    if (existingAmbassador) {
-      return Response.json({
-        success: true,
-        alreadyAmbassador: true,
-      });
-    }
-
-    /*
      * Already has a pending application — don't create a duplicate.
      */
 
