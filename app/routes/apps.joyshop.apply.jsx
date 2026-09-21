@@ -138,6 +138,34 @@ export const action = async ({ request }) => {
       );
     }
 
+    /*
+     * IMPORTANT SECURITY CHECK:
+     *
+     * This page's URL can be shared/found by anyone, including
+     * customers who never made a qualifying purchase and were
+     * never made an ambassador. Since ambassadors are now
+     * created INSTANTLY via the popup (only after a qualifying
+     * purchase), KYC submission must be gated on already being
+     * a real ambassador — otherwise someone could submit KYC
+     * documents directly, and if accidentally approved in
+     * Admin, become an ambassador without ever purchasing.
+     */
+
+    const existingAmbassador = await db.ambassador.findFirst({
+      where: { shop, customerId },
+    });
+
+    if (!existingAmbassador) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "You need to be a Just Organik Ambassador before submitting KYC. Make a qualifying purchase to become an ambassador first.",
+        },
+        { status: 403 }
+      );
+    }
+
     if (!admin) {
       return Response.json(
         {
