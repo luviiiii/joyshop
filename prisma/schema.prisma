@@ -83,6 +83,7 @@ model Referral {
   referredCustomerId String
   referredName       String?
   referredEmail      String?
+  referredPhone      String?
 
   status String @default("ACTIVE")
 

@@ -4,7 +4,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM_ADDRESS = "JOYSHOP <care@justorganik.co>";
+const FROM_ADDRESS = "JOYSHOP <care@justorganik.com>";
 
 /*
  * The ONE shared discount code you create manually in Shopify
@@ -234,12 +234,51 @@ export const loader = async ({ request }) => {
 
       if (!referral) {
         console.log(
-          "Creating referral for Shopify customer:",
-          loggedInCustomerId
+          "No existing referral for this customer. Checking if they are a genuinely new signup..."
         );
 
         let referredName = null;
         let referredEmail = null;
+
+        /*
+         * Definitive check: was this exact customerId recorded
+         * by our customers/create webhook? If Shopify never
+         * fired that webhook for them, they already had an
+         * account before clicking this referral link.
+         */
+        const newAccountRecord = await db.newCustomerAccount.findFirst({
+          where: {
+            shop,
+            customerId: loggedInCustomerId,
+          },
+        });
+
+        const isGenuinelyNewCustomer = Boolean(newAccountRecord);
+
+        console.log(
+          "customers/create webhook record found:",
+          isGenuinelyNewCustomer
+        );
+
+        if (!isGenuinelyNewCustomer) {
+          console.log(
+            "Customer already had an account before this click — skipping referral creation, tagging, and welcome credit."
+          );
+
+          console.log("========================================");
+
+          return jsonResponse({
+            success: true,
+            tracked: true,
+            referralCode,
+            visitId: visit.id,
+            customerId: loggedInCustomerId,
+            referralId: null,
+            skippedReason: "existing_customer",
+          });
+        }
+
+        let referredPhone = null;
 
         try {
           const customerResponse = await admin.graphql(
@@ -249,6 +288,7 @@ export const loader = async ({ request }) => {
                 email
                 firstName
                 lastName
+                phone
               }
             }`,
             {
@@ -269,14 +309,22 @@ export const loader = async ({ request }) => {
                 .trim() || null;
 
             referredEmail = customer.email || null;
+            referredPhone = customer.phone || null;
           }
         } catch (nameError) {
           console.error(
             "Failed to fetch customer name for referral:",
             nameError
           );
-          // Fall back to null name/email — not a fatal error.
+          // Fall back to null name/email/phone — not a fatal
+          // error, we already confirmed they're a genuine new
+          // signup.
         }
+
+        console.log(
+          "Creating referral for Shopify customer:",
+          loggedInCustomerId
+        );
 
         referral = await db.referral.create({
           data: {
@@ -285,6 +333,7 @@ export const loader = async ({ request }) => {
             referredCustomerId: loggedInCustomerId,
             referredName,
             referredEmail,
+            referredPhone,
             status: "ACTIVE",
           },
         });

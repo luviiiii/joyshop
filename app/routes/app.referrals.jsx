@@ -35,6 +35,7 @@ export default function Referrals({ loaderData }) {
       !search ||
       referral.referredName?.toLowerCase().includes(searchText) ||
       referral.referredEmail?.toLowerCase().includes(searchText) ||
+      referral.referredPhone?.toLowerCase().includes(searchText) ||
       referral.referredCustomerId
         ?.toLowerCase()
         .includes(searchText) ||
@@ -180,6 +181,7 @@ export default function Referrals({ loaderData }) {
                   <th style={styles.th}>CUSTOMER</th>
                   <th style={styles.th}>AMBASSADOR</th>
                   <th style={styles.th}>EMAIL</th>
+                  <th style={styles.th}>PHONE</th>
                   <th style={styles.th}>STATUS</th>
                   <th style={styles.th}>JOINED</th>
                   <th style={styles.th}>CREDITS</th>
@@ -262,6 +264,11 @@ export default function Referrals({ loaderData }) {
                       {/* Email */}
                       <td style={styles.td}>
                         {referral.referredEmail || "-"}
+                      </td>
+
+                      {/* Phone */}
+                      <td style={styles.td}>
+                        {referral.referredPhone || "-"}
                       </td>
 
                       {/* Status */}
@@ -500,7 +507,7 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "950px",
+    minWidth: "1050px",
   },
 
   th: {
