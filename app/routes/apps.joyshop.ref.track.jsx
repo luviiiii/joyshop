@@ -17,6 +17,34 @@ const WELCOME_DISCOUNT_CODE = "WELCOME200";
 const REFERRED_CUSTOMER_TAG = "joyshop-referred";
 const MINIMUM_ORDER_VALUE = 1500;
 
+/*
+ * Retries a database operation on transient connection failures
+ * (Prisma P1001 - "Can't reach database server"). This can
+ * happen briefly under load or cross-provider network blips.
+ * Retries up to 2 extra times with a short delay before giving
+ * up, so a momentary hiccup doesn't cost a real referral.
+ */
+async function withRetry(fn, retries = 2, delayMs = 300) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isConnectionError = error?.code === "P1001";
+      const isLastAttempt = attempt === retries;
+
+      if (!isConnectionError || isLastAttempt) {
+        throw error;
+      }
+
+      console.log(
+        `Database connection blip, retrying (attempt ${attempt + 1}/${retries})...`
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -246,12 +274,14 @@ export const loader = async ({ request }) => {
          * fired that webhook for them, they already had an
          * account before clicking this referral link.
          */
-        const newAccountRecord = await db.newCustomerAccount.findFirst({
-          where: {
-            shop,
-            customerId: loggedInCustomerId,
-          },
-        });
+        const newAccountRecord = await withRetry(() =>
+          db.newCustomerAccount.findFirst({
+            where: {
+              shop,
+              customerId: loggedInCustomerId,
+            },
+          })
+        );
 
         const isGenuinelyNewCustomer = Boolean(newAccountRecord);
 
@@ -326,17 +356,19 @@ export const loader = async ({ request }) => {
           loggedInCustomerId
         );
 
-        referral = await db.referral.create({
-          data: {
-            shop,
-            ambassadorId: ambassador.id,
-            referredCustomerId: loggedInCustomerId,
-            referredName,
-            referredEmail,
-            referredPhone,
-            status: "ACTIVE",
-          },
-        });
+        referral = await withRetry(() =>
+          db.referral.create({
+            data: {
+              shop,
+              ambassadorId: ambassador.id,
+              referredCustomerId: loggedInCustomerId,
+              referredName,
+              referredEmail,
+              referredPhone,
+              status: "ACTIVE",
+            },
+          })
+        );
 
         console.log("REFERRAL CREATED:", referral.id);
 
