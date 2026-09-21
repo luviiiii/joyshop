@@ -1085,7 +1085,7 @@ export default function AmbassadorDashboard() {
                 <span className="kyc-pending-badge">Under Review</span>
               ) : (
                 <a
-                  href="/pages/become-an-ambassador"
+                  href="https://www.justorganik.com/pages/become-an-ambassador"
                   className="kyc-banner-button"
                 >
                   {kycStatus === "REJECTED" ? "Resubmit KYC" : "Complete KYC"}
