@@ -325,40 +325,57 @@ function DeleteAmbassadorForm({ ambassadorId }) {
 
 function ReferralLinkRow({ referralCode }) {
   const [copied, setCopied] = useState(false);
+  const wrapperRef = useRef(null);
 
   const referralLink = buildReferralLink(referralCode);
 
-  async function handleCopy() {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(referralLink);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = referralLink;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-      }
+  useEffect(() => {
+    const wrapperEl = wrapperRef.current;
 
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Failed to copy referral link:", error);
+    if (!wrapperEl) return;
+
+    async function handleClick(event) {
+      const trigger = event.target.closest("[data-action='copy-link']");
+
+      if (!trigger) return;
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(referralLink);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = referralLink;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textarea);
+        }
+
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (error) {
+        console.error("Failed to copy referral link:", error);
+      }
     }
-  }
+
+    wrapperEl.addEventListener("click", handleClick);
+
+    return () => {
+      wrapperEl.removeEventListener("click", handleClick);
+    };
+  }, [referralLink]);
 
   return (
-    <s-stack direction="inline" gap="small" align="center">
+    <s-stack ref={wrapperRef} direction="inline" gap="small" align="center">
       <s-text>
         Referral Link:{" "}
         <strong>{referralLink}</strong>
       </s-text>
 
-      <s-button onclick={handleCopy}>
+      <s-button data-action="copy-link">
         {copied ? "Copied!" : "Copy Link"}
       </s-button>
     </s-stack>
@@ -367,6 +384,33 @@ function ReferralLinkRow({ referralCode }) {
 
 export default function Ambassadors() {
   const { ambassadors, customers, searchTerm } = useLoaderData();
+
+  const [ambassadorSearch, setAmbassadorSearch] = useState("");
+  const [expandedIds, setExpandedIds] = useState(new Set());
+
+  function toggleExpanded(id) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  const filteredAmbassadors = ambassadors.filter((ambassador) => {
+    if (!ambassadorSearch.trim()) return true;
+
+    const query = ambassadorSearch.trim().toLowerCase();
+
+    return (
+      (ambassador.name || "").toLowerCase().includes(query) ||
+      (ambassador.email || "").toLowerCase().includes(query) ||
+      (ambassador.referralCode || "").toLowerCase().includes(query)
+    );
+  });
 
   return (
     <s-page heading="Ambassadors">
@@ -390,70 +434,120 @@ export default function Ambassadors() {
       {/* CURRENT AMBASSADORS */}
       <s-section heading="Current Ambassadors">
 
+        {ambassadors.length > 0 && (
+          <div style={{ marginBottom: "16px" }}>
+            <input
+              type="text"
+              value={ambassadorSearch}
+              onChange={(event) => setAmbassadorSearch(event.target.value)}
+              placeholder="Search by name, email, or referral code..."
+              style={{
+                width: "100%",
+                maxWidth: "420px",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid #d6dfd8",
+                fontSize: "14px",
+              }}
+            />
+          </div>
+        )}
+
         {ambassadors.length === 0 ? (
           <s-banner tone="info">
             No ambassadors have been created yet.
           </s-banner>
+        ) : filteredAmbassadors.length === 0 ? (
+          <s-banner tone="info">
+            No ambassadors match "{ambassadorSearch}".
+          </s-banner>
         ) : (
           <s-stack direction="block" gap="base">
 
-            {ambassadors.map((ambassador) => (
-              <s-card key={ambassador.id}>
+            {filteredAmbassadors.map((ambassador) => {
+              const isExpanded = expandedIds.has(ambassador.id);
 
-                <s-stack direction="block" gap="base">
+              return (
+                <s-card key={ambassador.id}>
 
-                  <s-stack
-                    direction="inline"
-                    gap="base"
-                    align="center"
-                    justify="space-between"
-                  >
+                  <s-stack direction="block" gap="base">
 
-                    <s-stack direction="block" gap="small">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(ambassador.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        width: "100%",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                        textAlign: "left",
+                        font: "inherit",
+                        color: "inherit",
+                      }}
+                    >
+                      <s-stack direction="block" gap="small">
+                        <s-heading>
+                          {ambassador.name}
+                        </s-heading>
 
-                      <s-heading>
-                        {ambassador.name}
-                      </s-heading>
+                        <s-text>
+                          Referral Code:{" "}
+                          <strong>{ambassador.referralCode}</strong>
+                          {" "}&nbsp;•&nbsp; Earnings: {money(ambassador.totalEarnings)}
+                        </s-text>
+                      </s-stack>
 
-                      <s-text>
-                        {ambassador.email}
-                      </s-text>
+                      <span aria-hidden="true" style={{ fontSize: "18px", marginLeft: "12px", flexShrink: 0 }}>
+                        {isExpanded ? "▲" : "▼"}
+                      </span>
+                    </button>
 
-                      <s-text>
-                        Referral Code:{" "}
-                        <strong>{ambassador.referralCode}</strong>
-                      </s-text>
+                    {isExpanded && (
+                      <s-stack direction="block" gap="base">
 
-                    </s-stack>
+                        <s-stack
+                          direction="inline"
+                          gap="base"
+                          align="center"
+                          justify="space-between"
+                        >
 
-                    <s-stack direction="block" gap="small">
+                          <s-stack direction="block" gap="small">
+                            <s-text>
+                              {ambassador.email}
+                            </s-text>
+                          </s-stack>
 
-                      <s-text>
-                        Referrals: {ambassador.totalReferrals}
-                      </s-text>
+                          <s-stack direction="block" gap="small">
+                            <s-text>
+                              Referrals: {ambassador.totalReferrals}
+                            </s-text>
 
-                      <s-text>
-                        Orders: {ambassador.totalOrders}
-                      </s-text>
+                            <s-text>
+                              Orders: {ambassador.totalOrders}
+                            </s-text>
+                          </s-stack>
 
-                      <s-text>
-                        Earnings: {money(ambassador.totalEarnings)}
-                      </s-text>
+                        </s-stack>
 
-                    </s-stack>
+                        <ReferralLinkRow
+                          referralCode={ambassador.referralCode}
+                        />
+
+                        <DeleteAmbassadorForm ambassadorId={ambassador.id} />
+
+                      </s-stack>
+                    )}
 
                   </s-stack>
 
-                  <ReferralLinkRow
-                    referralCode={ambassador.referralCode}
-                  />
-
-                  <DeleteAmbassadorForm ambassadorId={ambassador.id} />
-
-                </s-stack>
-
-              </s-card>
-            ))}
+                </s-card>
+              );
+            })}
 
           </s-stack>
         )}
