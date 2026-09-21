@@ -59,3 +59,7 @@ automatically_update_urls_on_dev = true
 url = "https://joyshop-production.up.railway.app/apps/joyshop"
 prefix = "apps"
 subpath = "joyshop"
+
+[[webhooks.subscriptions]]
+topics = ["customers/create"]
+uri = "/webhooks/app/customers_create"
