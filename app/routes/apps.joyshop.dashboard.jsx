@@ -381,6 +381,29 @@ export async function loader({ request }) {
     available: availableBalance,
   };
 
+  /*
+   * =====================================================
+   * KYC STATUS
+   *
+   * Ambassadors are created instantly via the popup now,
+   * without KYC — but they still need to submit PAN/Aadhaar/
+   * cancelled cheque within 7 days to actually receive
+   * rewards. This drives the "Verify your KYC" prompt shown
+   * on the dashboard.
+   * =====================================================
+   */
+
+  const kycApplication = await db.ambassadorApplication.findFirst({
+    where: {
+      shop: ambassador.shop,
+      customerId: ambassador.customerId,
+    },
+  });
+
+  const kycStatus = kycApplication
+    ? kycApplication.status
+    : "NOT_SUBMITTED";
+
   return {
     ambassador: {
       id: ambassador.id,
@@ -391,6 +414,7 @@ export async function loader({ request }) {
     },
     stats,
     chartData,
+    kycStatus,
     payouts: payouts.slice(0, 10).map((payout) => ({
       id: payout.id,
       amount: Number(payout.amount || 0),
@@ -632,6 +656,7 @@ export default function AmbassadorDashboard() {
     earningsByPeriod,
     monthlyOrderValue,
     slabInfo,
+    kycStatus,
   } = useLoaderData();
 
   const payoutFetcher = useFetcher();
@@ -888,6 +913,15 @@ export default function AmbassadorDashboard() {
 
             <button
               type="button"
+              onClick={() => goToSection("kyc")}
+              className={activeSection === "kyc" ? "nav-item active" : "nav-item"}
+            >
+              <span className="nav-icon"><IconUser /></span>
+              Verify KYC
+            </button>
+
+            <button
+              type="button"
               onClick={() => goToSection("payouts")}
               className={activeSection === "payouts" ? "nav-item active" : "nav-item"}
             >
@@ -1015,6 +1049,51 @@ export default function AmbassadorDashboard() {
               Up to ₹30,000 → 7% &nbsp;•&nbsp; ₹30,001–₹60,000 → 10% &nbsp;•&nbsp; ₹60,001+ → 15%
             </p>
           </section>
+
+          {kycStatus !== "APPROVED" && (
+            <section
+              id="kyc"
+              className={activeSection === "kyc" ? "kyc-banner section-glow" : "kyc-banner"}
+            >
+              <div className="kyc-banner-left">
+                <div className="kyc-banner-icon">📋</div>
+                <div>
+                  <h3>Verify your KYC</h3>
+
+                  {kycStatus === "PENDING" ? (
+                    <p>
+                      Your documents are submitted and under review.
+                      We'll notify you once they're verified.
+                    </p>
+                  ) : kycStatus === "REJECTED" ? (
+                    <p>
+                      Your previous submission couldn't be verified.
+                      Please resubmit your PAN, Aadhaar, and
+                      cancelled cheque to start receiving rewards.
+                    </p>
+                  ) : (
+                    <p>
+                      Upload your PAN card, Aadhaar card, and a
+                      cancelled cheque within 7 days to start
+                      receiving your referral rewards.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {kycStatus === "PENDING" ? (
+                <span className="kyc-pending-badge">Under Review</span>
+              ) : (
+                <a
+                  href="/pages/become-an-ambassador"
+                  className="kyc-banner-button"
+                >
+                  {kycStatus === "REJECTED" ? "Resubmit KYC" : "Complete KYC"}
+                  <span aria-hidden="true">→</span>
+                </a>
+              )}
+            </section>
+          )}
 
           <section className="link-only-grid">
             <div className="link-card">
@@ -1408,6 +1487,14 @@ svg { width: 100%; height: 100%; }
 .tier-banner p strong { color: #14532d; }
 .tier-banner-scale { margin-top: 8px !important; font-size: 11.5px !important; color: #6b7a70 !important; }
 .tier-banner-scale strong { color: inherit !important; }
+
+.kyc-banner { background: #fff8ec; border: 1px solid #f2ddb0; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.kyc-banner-left { display: flex; align-items: flex-start; gap: 14px; }
+.kyc-banner-icon { width: 42px; height: 42px; border-radius: 50%; background: #f3e2b3; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.kyc-banner h3 { margin: 0 0 4px; font-size: 15px; color: #7a5a10; }
+.kyc-banner p { margin: 0; font-size: 13px; color: #8a6d2a; max-width: 480px; line-height: 1.5; }
+.kyc-banner-button { display: inline-flex; align-items: center; gap: 8px; background: #14532d; color: #ffffff; padding: 12px 20px; border-radius: 8px; font-weight: 700; font-size: 13px; text-decoration: none; white-space: nowrap; flex-shrink: 0; }
+.kyc-pending-badge { background: #f3e2b3; color: #7a5a10; padding: 10px 16px; border-radius: 999px; font-weight: 700; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
 .headline-stat { background: #ffffff; border: 1px solid #eef1ec; border-radius: 12px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; }
 .headline-stat-icon { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 10px; font-weight: 800; font-size: 15px; flex-shrink: 0; }
 .icon-green { background: #eaf3de; color: #14532d; }
@@ -1582,6 +1669,11 @@ svg { width: 100%; height: 100%; }
 .dashboard[data-theme="dark"] .tier-banner p { color: #d6e3da; }
 .dashboard[data-theme="dark"] .tier-banner p strong { color: #6fcf8f; }
 .dashboard[data-theme="dark"] .tier-banner-scale { color: #8fa398 !important; }
+.dashboard[data-theme="dark"] .kyc-banner { background: #2a2214; border-color: #4a3a1a; }
+.dashboard[data-theme="dark"] .kyc-banner-icon { background: #3a2e18; }
+.dashboard[data-theme="dark"] .kyc-banner h3 { color: #e0c97a; }
+.dashboard[data-theme="dark"] .kyc-banner p { color: #c9b581; }
+.dashboard[data-theme="dark"] .kyc-pending-badge { background: #3a2e18; color: #e0c97a; }
 
 .dashboard[data-theme="dark"] .headline-stat { background: #141d19; border-color: #22302a; }
 .dashboard[data-theme="dark"] .headline-stat strong { color: #e5efe8; }
