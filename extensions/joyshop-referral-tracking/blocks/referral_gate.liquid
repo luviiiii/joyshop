@@ -159,6 +159,7 @@
         {
           method: "GET",
           credentials: "same-origin",
+          keepalive: true,
           headers: {
             "Accept": "application/json",
           },
@@ -221,18 +222,25 @@
 
       setReferralCookie(referralCodeFromUrl);
 
-      /*
-       * Track the visit immediately, even before login,
-       * so we don't lose the visit if the customer abandons
-       * sign-up. If they're already logged in, this call
-       * also creates the Referral record server-side.
-       */
-      await trackReferralVisit(referralCodeFromUrl);
-
       if (!isLoggedIn) {
+        /*
+         * Fire the visit-tracking request in the background
+         * (keepalive keeps it alive through the immediate
+         * navigation below) and redirect to sign-in right away,
+         * instead of making the visitor wait on this network
+         * round-trip first. The cookie above already preserves
+         * the referral even if this call is still in flight.
+         */
+        trackReferralVisit(referralCodeFromUrl);
         redirectToSignIn();
         return;
       }
+
+      /*
+       * Already logged in — this call also creates the
+       * Referral record server-side, so we do wait for it here.
+       */
+      await trackReferralVisit(referralCodeFromUrl);
 
       localStorage.setItem(LINKED_KEY, referralCodeFromUrl);
       return;
