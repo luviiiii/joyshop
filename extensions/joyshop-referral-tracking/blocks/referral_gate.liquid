@@ -20,6 +20,7 @@
   const COOKIE_DAYS = 30;
   const LINKED_KEY = "joyshop_referral_linked";
   const POST_LOGIN_REDIRECT_KEY = "joyshop_post_login_redirect";
+  const FORCED_REFERRAL_LOGIN_KEY = "joyshop_forced_referral_login";
 
   /* =========================================================
      1. REFERRAL LINK COPY FUNCTIONALITY
@@ -201,6 +202,8 @@
   if (isLoggedIn) {
     const pendingRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
 
+    sessionStorage.removeItem(FORCED_REFERRAL_LOGIN_KEY);
+
     if (pendingRedirect) {
       sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
 
@@ -293,6 +296,7 @@
      * on Shopify's side.
      */
     sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, "/");
+    sessionStorage.setItem(FORCED_REFERRAL_LOGIN_KEY, "true");
 
     const loginUrl = "/pages/account";
 
