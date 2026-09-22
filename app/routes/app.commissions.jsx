@@ -133,32 +133,39 @@ export const action = async ({ request }) => {
       );
     }
 
-    const newAmountRaw = formData.get("commissionAmount");
-    const newAmount = Number(newAmountRaw);
+    const newRateRaw = formData.get("commissionRate");
+    const newRate = Number(newRateRaw);
 
     if (
-      newAmountRaw === null ||
-      newAmountRaw === "" ||
-      Number.isNaN(newAmount) ||
-      newAmount < 0
+      newRateRaw === null ||
+      newRateRaw === "" ||
+      Number.isNaN(newRate) ||
+      newRate < 0 ||
+      newRate > 100
     ) {
       return Response.json(
         {
           success: false,
-          error: "Enter a valid commission amount.",
+          error: "Enter a valid commission rate (0-100).",
         },
         { status: 400 }
       );
     }
 
+    const recalculatedAmount =
+      (Number(commission.orderAmount || 0) * newRate) / 100;
+
     await db.commission.update({
       where: { id: commission.id },
-      data: { commissionAmount: newAmount },
+      data: {
+        commissionRate: newRate,
+        commissionAmount: recalculatedAmount,
+      },
     });
 
     return Response.json({
       success: true,
-      message: "Commission amount updated.",
+      message: "Commission rate updated.",
     });
   }
 
@@ -209,6 +216,20 @@ export default function Commissions() {
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
   const [expandedAmbassadors, setExpandedAmbassadors] = useState(new Set());
+  const [selectedMonth, setSelectedMonth] = useState("all");
+
+  function monthKey(dateValue) {
+    const d = new Date(dateValue);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function monthLabel(key) {
+    const [year, month] = key.split("-").map(Number);
+    return new Date(year, month - 1, 1).toLocaleDateString("en-IN", {
+      month: "long",
+      year: "numeric",
+    });
+  }
 
   function toggleAmbassador(key) {
     setExpandedAmbassadors((current) => {
@@ -224,7 +245,7 @@ export default function Commissions() {
 
   function startEditing(item) {
     setEditingId(item.id);
-    setEditValue(String(item.commissionAmount || 0));
+    setEditValue(String(item.commissionRate ?? 0));
   }
 
   function cancelEditing() {
@@ -237,7 +258,7 @@ export default function Commissions() {
       {
         action: "edit",
         commissionId,
-        commissionAmount: editValue,
+        commissionRate: editValue,
       },
       { method: "post" }
     );
@@ -246,13 +267,28 @@ export default function Commissions() {
     setEditValue("");
   }
 
-  const totalCommission = commissions.reduce(
+  /*
+   * Build the list of months that actually have commissions, for
+   * the month filter dropdown. Newest first.
+   */
+  const availableMonths = Array.from(
+    new Set(commissions.map((item) => monthKey(item.createdAt)))
+  ).sort((a, b) => (a < b ? 1 : -1));
+
+  const filteredCommissions =
+    selectedMonth === "all"
+      ? commissions
+      : commissions.filter(
+          (item) => monthKey(item.createdAt) === selectedMonth
+        );
+
+  const totalCommission = filteredCommissions.reduce(
     (sum, item) =>
       sum + Number(item.commissionAmount || 0),
     0
   );
 
-  const pendingCommission = commissions
+  const pendingCommission = filteredCommissions
     .filter((item) => item.status === "PENDING")
     .reduce(
       (sum, item) =>
@@ -260,7 +296,7 @@ export default function Commissions() {
       0
     );
 
-  const approvedCommission = commissions
+  const approvedCommission = filteredCommissions
     .filter((item) => item.status === "APPROVED")
     .reduce(
       (sum, item) =>
@@ -268,7 +304,7 @@ export default function Commissions() {
       0
     );
 
-  const paidCommission = commissions
+  const paidCommission = filteredCommissions
     .filter((item) => item.status === "PAID")
     .reduce(
       (sum, item) =>
@@ -276,7 +312,7 @@ export default function Commissions() {
       0
     );
 
-  const totalSales = commissions.reduce(
+  const totalSales = filteredCommissions.reduce(
     (sum, item) =>
       sum + Number(item.orderAmount || 0),
     0
@@ -290,7 +326,7 @@ export default function Commissions() {
    */
   const groupsMap = new Map();
 
-  for (const item of commissions) {
+  for (const item of filteredCommissions) {
     const key = item.ambassador?.id || "unknown";
 
     if (!groupsMap.has(key)) {
@@ -331,7 +367,7 @@ export default function Commissions() {
         <StatCard
           icon="🛒"
           label="Total Orders"
-          value={commissions.length}
+          value={filteredCommissions.length}
         />
 
         <StatCard
@@ -387,7 +423,7 @@ export default function Commissions() {
 
       <div style={styles.card}>
 
-        <div style={styles.cardHeader}>
+        <div style={styles.cardHeaderRow}>
 
           <div>
             <h2 style={styles.cardTitle}>
@@ -399,6 +435,21 @@ export default function Commissions() {
               ambassador.
             </p>
           </div>
+
+          {availableMonths.length > 0 && (
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={styles.monthSelect}
+            >
+              <option value="all">All Time</option>
+              {availableMonths.map((key) => (
+                <option key={key} value={key}>
+                  {monthLabel(key)}
+                </option>
+              ))}
+            </select>
+          )}
 
         </div>
 
@@ -418,6 +469,24 @@ export default function Commissions() {
             <p style={styles.emptyText}>
               When someone purchases through your
               referral link, the order will appear here.
+            </p>
+
+          </div>
+
+        ) : filteredCommissions.length === 0 ? (
+
+          <div style={styles.empty}>
+
+            <div style={styles.emptyIcon}>
+              🛒
+            </div>
+
+            <h3 style={styles.emptyTitle}>
+              No commissions in {monthLabel(selectedMonth)}
+            </h3>
+
+            <p style={styles.emptyText}>
+              Try a different month, or select "All Time".
             </p>
 
           </div>
@@ -581,21 +650,12 @@ export default function Commissions() {
                               {/* RATE */}
 
                               <td style={styles.td}>
-                                {item.commissionRate != null
-                                  ? `${item.commissionRate}%`
-                                  : "-"}
-                              </td>
-
-
-                              {/* COMMISSION */}
-
-                              <td style={styles.td}>
-
                                 {isEditingThisRow ? (
                                   <div style={styles.editRow}>
                                     <input
                                       type="number"
                                       min="0"
+                                      max="100"
                                       step="0.01"
                                       value={editValue}
                                       onChange={(e) =>
@@ -604,7 +664,29 @@ export default function Commissions() {
                                       style={styles.editInput}
                                       autoFocus
                                     />
+                                    <span style={styles.muted}>%</span>
                                   </div>
+                                ) : item.commissionRate != null ? (
+                                  `${item.commissionRate}%`
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+
+
+                              {/* COMMISSION */}
+
+                              <td style={styles.td}>
+
+                                {isEditingThisRow ? (
+                                  <strong style={styles.money}>
+                                    ₹
+                                    {(
+                                      (Number(item.orderAmount || 0) *
+                                        Number(editValue || 0)) /
+                                      100
+                                    ).toFixed(2)}
+                                  </strong>
                                 ) : (
                                   <strong style={styles.money}>
                                     ₹
@@ -811,12 +893,12 @@ export default function Commissions() {
         )}
 
 
-        {commissions.length > 0 && (
+        {filteredCommissions.length > 0 && (
 
           <div style={styles.footer}>
             Total orders:{" "}
             <strong>
-              {commissions.length}
+              {filteredCommissions.length}
             </strong>
             {" "}&nbsp;•&nbsp; Ambassadors:{" "}
             <strong>
@@ -1017,6 +1099,27 @@ const styles = {
   cardHeader: {
     padding: "22px 24px",
     borderBottom: "1px solid #edf1ee",
+  },
+
+  cardHeaderRow: {
+    padding: "22px 24px",
+    borderBottom: "1px solid #edf1ee",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "16px",
+    flexWrap: "wrap",
+  },
+
+  monthSelect: {
+    height: "38px",
+    border: "1px solid #dce4df",
+    borderRadius: "9px",
+    padding: "0 12px",
+    background: "#fff",
+    fontSize: "13px",
+    color: "#37423b",
+    flexShrink: 0,
   },
 
   cardTitle: {
