@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -29,16 +30,6 @@ export const loader = async ({ request }) => {
 
   // Get all commissions
   const commissions = await db.commission.findMany({
-    where: {
-      shop,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  // Get all credits
-  const credits = await db.referralCredit.findMany({
     where: {
       shop,
     },
@@ -87,15 +78,6 @@ export const loader = async ({ request }) => {
     0
   );
 
-  const totalCreditsIssued = credits.reduce(
-    (total, credit) => total + credit.amount,
-    0
-  );
-
-  const totalCreditsUsed = credits
-    .filter((credit) => credit.status === "USED")
-    .reduce((total, credit) => total + credit.amount, 0);
-
   const totalCommission = commissions.reduce(
     (total, commission) => total + commission.commissionAmount,
     0
@@ -114,7 +96,6 @@ export const loader = async ({ request }) => {
     ambassadors,
     referrals,
     commissions,
-    credits,
     settings,
     stats: {
       totalAmbassadors,
@@ -124,8 +105,6 @@ export const loader = async ({ request }) => {
       totalEarnings,
       totalCommission,
       pendingCommission,
-      totalCreditsIssued,
-      totalCreditsUsed,
     },
   };
 };
@@ -135,10 +114,63 @@ export default function AdminDashboard() {
 
   const { stats, settings, ambassadors } = data;
 
+  const [showAllAmbassadors, setShowAllAmbassadors] = useState(false);
+  const toggleBtnRef = useRef(null);
+
+  useEffect(() => {
+    const btn = toggleBtnRef.current;
+    if (!btn) return;
+
+    function handleClick() {
+      setShowAllAmbassadors((open) => !open);
+    }
+
+    btn.addEventListener("click", handleClick);
+    return () => btn.removeEventListener("click", handleClick);
+  }, []);
+
   const money = (value) =>
     `₹${Number(value || 0).toLocaleString("en-IN", {
       maximumFractionDigits: 2,
     })}`;
+
+  // Sort by actual performance (earnings), not creation date, so
+  // "Top Ambassadors" is genuinely accurate.
+  const rankedAmbassadors = [...ambassadors]
+    .sort((a, b) => Number(b.totalEarnings || 0) - Number(a.totalEarnings || 0))
+    .slice(0, 10);
+
+  const topAmbassador = rankedAmbassadors[0];
+  const restOfAmbassadors = rankedAmbassadors.slice(1);
+
+  function AmbassadorRow({ ambassador }) {
+    return (
+      <s-section key={ambassador.id}>
+        <s-grid gridTemplateColumns="2fr 1fr 1fr 1fr" gap="base">
+          <s-stack direction="block" gap="small">
+            <s-heading>{ambassador.name}</s-heading>
+            <s-text>{ambassador.email}</s-text>
+            <s-text>Code: {ambassador.referralCode}</s-text>
+          </s-stack>
+
+          <s-stack direction="block" gap="small">
+            <s-text>Referrals</s-text>
+            <s-heading>{ambassador.totalReferrals}</s-heading>
+          </s-stack>
+
+          <s-stack direction="block" gap="small">
+            <s-text>Orders</s-text>
+            <s-heading>{ambassador.totalOrders}</s-heading>
+          </s-stack>
+
+          <s-stack direction="block" gap="small">
+            <s-text>Earnings</s-text>
+            <s-heading>{money(ambassador.totalEarnings)}</s-heading>
+          </s-stack>
+        </s-grid>
+      </s-section>
+    );
+  }
 
   return (
     <s-page heading="JOYSHOP Referral Program">
@@ -148,8 +180,8 @@ export default function AdminDashboard() {
           <s-heading>Referral & Ambassador Dashboard</s-heading>
 
           <s-text>
-            Manage your ambassador program, referrals, customer credits and
-            commissions from one place.
+            Manage your ambassador program, referrals and commissions from
+            one place.
           </s-text>
 
           <s-stack direction="inline" gap="base">
@@ -167,7 +199,7 @@ export default function AdminDashboard() {
       {/* PROGRAM STATUS */}
       <s-section heading="Program Status">
         <s-grid
-          gridTemplateColumns="repeat(4, 1fr)"
+          gridTemplateColumns="repeat(2, 1fr)"
           gap="base"
         >
           <s-section>
@@ -182,36 +214,6 @@ export default function AdminDashboard() {
                 {settings.enabled
                   ? "Customers can participate"
                   : "Referral program is currently paused"}
-              </s-text>
-            </s-stack>
-          </s-section>
-
-          <s-section>
-            <s-stack direction="block" gap="small">
-              <s-text>First Order Credit</s-text>
-
-              <s-heading>
-                {settings.firstOrderCreditEnabled
-                  ? money(settings.firstOrderCredit)
-                  : "OFF"}
-              </s-heading>
-
-              <s-text>
-                One-time customer credit
-              </s-text>
-            </s-stack>
-          </s-section>
-
-          <s-section>
-            <s-stack direction="block" gap="small">
-              <s-text>Commission Rate</s-text>
-
-              <s-heading>
-                {settings.commissionRate}%
-              </s-heading>
-
-              <s-text>
-                Ambassador commission
               </s-text>
             </s-stack>
           </s-section>
@@ -299,7 +301,7 @@ export default function AdminDashboard() {
       {/* MONEY OVERVIEW */}
       <s-section heading="Financial Overview">
         <s-grid
-          gridTemplateColumns="repeat(3, 1fr)"
+          gridTemplateColumns="repeat(2, 1fr)"
           gap="base"
         >
           <s-section>
@@ -329,20 +331,6 @@ export default function AdminDashboard() {
               </s-text>
             </s-stack>
           </s-section>
-
-          <s-section>
-            <s-stack direction="block" gap="small">
-              <s-text>Customer Credits Used</s-text>
-
-              <s-heading>
-                {money(stats.totalCreditsUsed)}
-              </s-heading>
-
-              <s-text>
-                From {money(stats.totalCreditsIssued)} issued
-              </s-text>
-            </s-stack>
-          </s-section>
         </s-grid>
       </s-section>
 
@@ -359,124 +347,32 @@ export default function AdminDashboard() {
           </s-stack>
         ) : (
           <s-stack direction="block" gap="base">
-            {ambassadors.slice(0, 10).map((ambassador) => (
-              <s-section key={ambassador.id}>
-                <s-grid
-                  gridTemplateColumns="2fr 1fr 1fr 1fr"
-                  gap="base"
-                >
-                  <s-stack direction="block" gap="small">
-                    <s-heading>
-                      {ambassador.name}
-                    </s-heading>
+            <AmbassadorRow ambassador={topAmbassador} />
 
-                    <s-text>
-                      {ambassador.email}
-                    </s-text>
+            {restOfAmbassadors.length > 0 && (
+              <s-stack direction="block" gap="base">
+                <s-button ref={toggleBtnRef}>
+                  {showAllAmbassadors
+                    ? "Hide other ambassadors"
+                    : `Show ${restOfAmbassadors.length} more ambassador${
+                        restOfAmbassadors.length === 1 ? "" : "s"
+                      }`}
+                </s-button>
 
-                    <s-text>
-                      Code: {ambassador.referralCode}
-                    </s-text>
+                {showAllAmbassadors && (
+                  <s-stack direction="block" gap="base">
+                    {restOfAmbassadors.map((ambassador) => (
+                      <AmbassadorRow
+                        key={ambassador.id}
+                        ambassador={ambassador}
+                      />
+                    ))}
                   </s-stack>
-
-                  <s-stack direction="block" gap="small">
-                    <s-text>Referrals</s-text>
-
-                    <s-heading>
-                      {ambassador.totalReferrals}
-                    </s-heading>
-                  </s-stack>
-
-                  <s-stack direction="block" gap="small">
-                    <s-text>Orders</s-text>
-
-                    <s-heading>
-                      {ambassador.totalOrders}
-                    </s-heading>
-                  </s-stack>
-
-                  <s-stack direction="block" gap="small">
-                    <s-text>Earnings</s-text>
-
-                    <s-heading>
-                      {money(ambassador.totalEarnings)}
-                    </s-heading>
-                  </s-stack>
-                </s-grid>
-              </s-section>
-            ))}
+                )}
+              </s-stack>
+            )}
           </s-stack>
         )}
-      </s-section>
-
-      {/* PROGRAM SETTINGS */}
-      <s-section heading="Current Program Settings">
-        <s-grid
-          gridTemplateColumns="repeat(2, 1fr)"
-          gap="base"
-        >
-          <s-section>
-            <s-stack direction="block" gap="small">
-              <s-text>First Order Credit</s-text>
-
-              <s-heading>
-                {settings.firstOrderCreditEnabled
-                  ? money(settings.firstOrderCredit)
-                  : "Disabled"}
-              </s-heading>
-
-              <s-text>
-                Automatically available to a referred customer on
-                their first eligible order.
-              </s-text>
-            </s-stack>
-          </s-section>
-
-          <s-section>
-            <s-stack direction="block" gap="small">
-              <s-text>Commission</s-text>
-
-              <s-heading>
-                {settings.commissionRate}%
-              </s-heading>
-
-              <s-text>
-                Commission is generated according to the referral
-                program rules.
-              </s-text>
-            </s-stack>
-          </s-section>
-
-          <s-section>
-            <s-stack direction="block" gap="small">
-              <s-text>Referral Attribution</s-text>
-
-              <s-heading>
-                {settings.referralAttribution}
-              </s-heading>
-
-              <s-text>
-                The first valid referral gets attribution.
-              </s-text>
-            </s-stack>
-          </s-section>
-
-          <s-section>
-            <s-stack direction="block" gap="small">
-              <s-text>Credit Expiry</s-text>
-
-              <s-heading>
-                {settings.creditExpiryDays
-                  ? `${settings.creditExpiryDays} days`
-                  : "No expiry"}
-              </s-heading>
-
-              <s-text>
-                Customer referral credit validity.
-              </s-text>
-            </s-stack>
-          </s-section>
-        </s-grid>
       </s-section>
 
       {/* QUICK ACTIONS */}
