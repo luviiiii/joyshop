@@ -11,7 +11,6 @@ export const loader = async ({ request }) => {
     },
     include: {
       ambassador: true,
-      credits: true,
       commissions: true,
     },
     orderBy: {
@@ -49,16 +48,6 @@ export default function Referrals({ loaderData }) {
 
     return matchesSearch && matchesStatus;
   });
-
-  const totalCredits = referrals.reduce(
-    (total, referral) =>
-      total +
-      referral.credits.reduce(
-        (sum, credit) => sum + Number(credit.amount || 0),
-        0
-      ),
-    0
-  );
 
   const totalCommission = referrals.reduce(
     (total, referral) =>
@@ -100,12 +89,6 @@ export default function Referrals({ loaderData }) {
           icon="✓"
           label="Active Referrals"
           value={activeReferrals}
-        />
-
-        <StatCard
-          icon="💰"
-          label="Customer Credits"
-          value={`₹${totalCredits.toFixed(2)}`}
         />
 
         <StatCard
@@ -184,21 +167,12 @@ export default function Referrals({ loaderData }) {
                   <th style={styles.th}>PHONE</th>
                   <th style={styles.th}>STATUS</th>
                   <th style={styles.th}>JOINED</th>
-                  <th style={styles.th}>CREDITS</th>
                   <th style={styles.th}>COMMISSION</th>
                 </tr>
               </thead>
 
               <tbody>
                 {filteredReferrals.map((referral) => {
-                  const credits =
-                    referral.credits.reduce(
-                      (sum, credit) =>
-                        sum +
-                        Number(credit.amount || 0),
-                      0
-                    );
-
                   const commission =
                     referral.commissions.reduce(
                       (sum, item) =>
@@ -304,13 +278,6 @@ export default function Referrals({ loaderData }) {
                               }
                             )
                           : "-"}
-                      </td>
-
-                      {/* Credits */}
-                      <td style={styles.td}>
-                        <strong>
-                          ₹{credits.toFixed(2)}
-                        </strong>
                       </td>
 
                       {/* Commission */}
