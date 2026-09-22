@@ -646,6 +646,33 @@ function IconGrid() {
   );
 }
 
+function IconWhatsApp() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.47 14.38c-.29-.15-1.71-.84-1.98-.94-.27-.1-.46-.15-.66.15-.19.29-.75.94-.92 1.13-.17.19-.34.22-.63.07-.29-.15-1.22-.45-2.32-1.43-.86-.76-1.44-1.71-1.61-2-.17-.29-.02-.45.13-.6.13-.13.29-.34.44-.51.15-.17.19-.29.29-.49.1-.19.05-.36-.02-.51-.07-.15-.66-1.59-.9-2.18-.24-.57-.48-.49-.66-.5-.17-.01-.36-.01-.56-.01-.19 0-.51.07-.78.36-.27.29-1.02 1-1.02 2.43 0 1.43 1.04 2.82 1.19 3.01.15.19 2.05 3.13 4.96 4.39.69.3 1.23.48 1.65.61.69.22 1.32.19 1.82.11.55-.08 1.71-.7 1.96-1.38.24-.68.24-1.26.17-1.38-.07-.12-.27-.19-.56-.34z" />
+      <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.79.47 3.46 1.28 4.92L2 22l5.29-1.39a9.87 9.87 0 0 0 4.75 1.21h.01c5.46 0 9.9-4.45 9.9-9.91C21.96 6.45 17.51 2 12.04 2zm0 18.11h-.01a8.2 8.2 0 0 1-4.18-1.14l-.3-.18-3.14.82.84-3.06-.2-.31a8.15 8.15 0 0 1-1.26-4.34c0-4.53 3.69-8.21 8.25-8.21 2.2 0 4.27.86 5.83 2.42a8.15 8.15 0 0 1 2.41 5.79c0 4.53-3.69 8.21-8.24 8.21z" />
+    </svg>
+  );
+}
+
+function IconFacebook() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.23.2 2.23.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94z" />
+    </svg>
+  );
+}
+
+function IconInstagram() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function IconCopy() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -1140,9 +1167,9 @@ export default function AmbassadorDashboard() {
 
               <div className="share-row">
                 <span>Share via</span>
-                <button type="button" className="share-icon whatsapp" onClick={shareWhatsApp} aria-label="Share on WhatsApp">W</button>
-                <button type="button" className="share-icon facebook" onClick={shareFacebook} aria-label="Share on Facebook">f</button>
-                <button type="button" className="share-icon instagram" onClick={shareInstagram} aria-label="Share on Instagram">IG</button>
+                <button type="button" className="share-icon whatsapp" onClick={shareWhatsApp} aria-label="Share on WhatsApp"><IconWhatsApp /></button>
+                <button type="button" className="share-icon facebook" onClick={shareFacebook} aria-label="Share on Facebook"><IconFacebook /></button>
+                <button type="button" className="share-icon instagram" onClick={shareInstagram} aria-label="Share on Instagram"><IconInstagram /></button>
                 <button type="button" className="share-icon generic" onClick={shareGeneric} aria-label="More sharing options">⤴</button>
               </div>
             </div>
@@ -1369,9 +1396,9 @@ export default function AmbassadorDashboard() {
             </div>
 
             <div className="share-row wide">
-              <button type="button" className="share whatsapp" onClick={shareWhatsApp}>WhatsApp</button>
-              <button type="button" className="share facebook" onClick={shareFacebook}>Facebook</button>
-              <button type="button" className="share instagram" onClick={shareInstagram}>Instagram</button>
+              <button type="button" className="share whatsapp" onClick={shareWhatsApp}><IconWhatsApp /> WhatsApp</button>
+              <button type="button" className="share facebook" onClick={shareFacebook}><IconFacebook /> Facebook</button>
+              <button type="button" className="share instagram" onClick={shareInstagram}><IconInstagram /> Instagram</button>
             </div>
           </section>
 
@@ -1558,6 +1585,7 @@ svg { width: 100%; height: 100%; }
 .share-row { display: flex; align-items: center; gap: 8px; }
 .share-row span { font-size: 12px; color: #6b7a70; margin-right: 4px; }
 .share-icon { width: 32px; height: 32px; border-radius: 50%; border: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; }
+.share-icon svg { width: 16px; height: 16px; }
 .share-icon.whatsapp { background: #25d366; }
 .share-icon.facebook { background: #1877f2; }
 .share-icon.instagram { background: #c1387b; }
@@ -1634,7 +1662,8 @@ svg { width: 100%; height: 100%; }
 .order-summary strong { display: block; margin-top: 4px; font-size: 13px; }
 
 .share-row.wide { gap: 10px; margin-top: 14px; }
-.share-row.wide .share { border: 0; border-radius: 8px; padding: 10px 16px; font-size: 12px; font-weight: 700; }
+.share-row.wide .share { border: 0; border-radius: 8px; padding: 10px 16px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+.share-row.wide .share svg { width: 16px; height: 16px; flex-shrink: 0; }
 .share-row.wide .whatsapp { background: #e5f7ea; color: #14532d; }
 .share-row.wide .facebook { background: #e8f0ff; color: #2169b5; }
 .share-row.wide .instagram { background: #fbe6f0; color: #c1387b; }
