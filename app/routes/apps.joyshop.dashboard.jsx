@@ -110,13 +110,16 @@ export async function loader({ request }) {
     });
 
   /*
-   * Backfill referredName for older referrals created before we
-   * started saving it at referral-creation time. Fetches names
-   * from Shopify and persists them so this only happens once
-   * per referral, not on every dashboard load.
+   * Backfill referredName/referredEmail/referredPhone for older
+   * referrals created before we started saving these at
+   * referral-creation time. Fetches from Shopify and persists
+   * them so this only happens once per referral, not on every
+   * dashboard load.
    */
   const referralsMissingName = referrals.filter(
-    (referral) => !referral.referredName && referral.referredCustomerId
+    (referral) =>
+      (!referral.referredName || !referral.referredPhone) &&
+      referral.referredCustomerId
   );
 
   if (referralsMissingName.length > 0 && admin) {
@@ -136,6 +139,7 @@ export async function loader({ request }) {
               firstName
               lastName
               email
+              phone
             }
           }
         }`,
@@ -162,15 +166,17 @@ export async function loader({ request }) {
             .join(" ")
             .trim() || null;
 
-        if (fullName || match.email) {
-          referral.referredName = fullName;
+        if (fullName || match.email || match.phone) {
+          referral.referredName = fullName || referral.referredName;
           referral.referredEmail = match.email || referral.referredEmail;
+          referral.referredPhone = match.phone || referral.referredPhone;
 
           await db.referral.update({
             where: { id: referral.id },
             data: {
-              referredName: fullName,
+              referredName: fullName || referral.referredName,
               referredEmail: match.email || referral.referredEmail,
+              referredPhone: match.phone || referral.referredPhone,
             },
           });
         }
@@ -332,10 +338,12 @@ export async function loader({ request }) {
         value: Number(item.value.toFixed(2)),
       }));
 
-  const totalCommission = commissions.reduce(
-    (total, commission) => total + Number(commission.commissionAmount || 0),
-    0
-  );
+  const totalCommission = commissions
+    .filter((commission) => commission.status !== "REJECTED")
+    .reduce(
+      (total, commission) => total + Number(commission.commissionAmount || 0),
+      0
+    );
 
   const pendingCommission = commissions
     .filter((commission) => commission.status === "PENDING")
@@ -365,14 +373,20 @@ export async function loader({ request }) {
 
   const availableBalance = Math.max(0, approvedCommission - allocatedPayouts);
 
-  const totalSales = commissions.reduce(
-    (total, commission) => total + Number(commission.orderAmount || 0),
-    0
-  );
+  const totalSales = commissions
+    .filter((commission) => commission.status !== "REJECTED")
+    .reduce(
+      (total, commission) => total + Number(commission.orderAmount || 0),
+      0
+    );
+
+  const validOrderCount = commissions.filter(
+    (commission) => commission.status !== "REJECTED"
+  ).length;
 
   const stats = {
     referrals: referrals.length,
-    orders: commissions.length,
+    orders: validOrderCount,
     sales: totalSales,
     commission: totalCommission,
     pending: pendingCommission,
@@ -666,6 +680,7 @@ export default function AmbassadorDashboard() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [showAllReferrals, setShowAllReferrals] = useState(false);
   const [earningsPeriod, setEarningsPeriod] = useState("thisMonth");
 
   useEffect(() => {
@@ -1027,6 +1042,14 @@ export default function AmbassadorDashboard() {
                 <span>Order Value This Month</span>
               </div>
             </div>
+
+            <div className="headline-stat">
+              <div className="headline-stat-icon icon-green">₹</div>
+              <div>
+                <strong>{money(earningsByPeriod.thisMonth)}</strong>
+                <span>Earnings This Month</span>
+              </div>
+            </div>
           </section>
 
           <section className="tier-banner">
@@ -1139,38 +1162,54 @@ export default function AmbassadorDashboard() {
                 <p>Share your referral link to get started.</p>
               </div>
             ) : (
-              <div className="referral-table-wrap">
-                <table className="referral-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Date</th>
-                      <th>Status</th>
-                      <th>Order Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {referrals.map((referral) => (
-                      <tr key={referral.id}>
-                        <td>{referral.name}</td>
-                        <td>{formatDate(referral.joinedAt)}</td>
-                        <td>
-                          <span
-                            className={
-                              referral.status === "ORDER_PLACED"
-                                ? "status-pill placed"
-                                : "status-pill signed-up"
-                            }
-                          >
-                            {referral.status === "ORDER_PLACED" ? "Order Placed" : "Signed Up"}
-                          </span>
-                        </td>
-                        <td>{referral.orderValue > 0 ? money(referral.orderValue) : "-"}</td>
+              <>
+                <div className="referral-table-wrap">
+                  <table className="referral-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Order Value</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {(showAllReferrals ? referrals : referrals.slice(0, 5)).map(
+                        (referral) => (
+                          <tr key={referral.id}>
+                            <td>{referral.name}</td>
+                            <td>{formatDate(referral.joinedAt)}</td>
+                            <td>
+                              <span
+                                className={
+                                  referral.status === "ORDER_PLACED"
+                                    ? "status-pill placed"
+                                    : "status-pill signed-up"
+                                }
+                              >
+                                {referral.status === "ORDER_PLACED" ? "Order Placed" : "Signed Up"}
+                              </span>
+                            </td>
+                            <td>{referral.orderValue > 0 ? money(referral.orderValue) : "-"}</td>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {referrals.length > 5 && (
+                  <button
+                    type="button"
+                    className="referrals-toggle"
+                    onClick={() => setShowAllReferrals((open) => !open)}
+                  >
+                    {showAllReferrals
+                      ? "Show less"
+                      : `Show all ${referrals.length} referrals`}
+                  </button>
+                )}
+              </>
             )}
           </section>
 
@@ -1306,6 +1345,10 @@ export default function AmbassadorDashboard() {
                 <div>
                   <span>Total Sales</span>
                   <strong>{money(stats.sales)}</strong>
+                </div>
+                <div>
+                  <span>Order Value This Month</span>
+                  <strong>{money(monthlyOrderValue)}</strong>
                 </div>
               </div>
             </section>
@@ -1480,7 +1523,7 @@ svg { width: 100%; height: 100%; }
 .alert.success { background: #e7f8ec; border: 1px solid #bce5c7; color: #14532d; }
 .alert.error { background: #fff0ef; border: 1px solid #f1c5c0; color: #b42318; }
 
-.headline-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.headline-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 18px; }
 
 .tier-banner { background: linear-gradient(135deg,#f3f9e7 0%,#ffffff 72%); border: 1px solid #dcebc8; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; }
 .tier-banner p { margin: 0; font-size: 13.5px; color: #1f2d22; line-height: 1.6; }
@@ -1531,6 +1574,10 @@ svg { width: 100%; height: 100%; }
 .section-label { color: #14532d; font-size: 10px; font-weight: 800; letter-spacing: .6px; }
 
 .referral-table-wrap { overflow-x: auto; }
+.referrals-toggle { display: block; width: 100%; margin-top: 12px; padding: 10px; background: none; border: 1px solid #dce4df; border-radius: 8px; color: #14532d; font-size: 12px; font-weight: 700; cursor: pointer; }
+.referrals-toggle:hover { background: #f5faf6; }
+.dashboard[data-theme="dark"] .referrals-toggle { border-color: #26382f; color: #6fcf8f; }
+.dashboard[data-theme="dark"] .referrals-toggle:hover { background: #1a2620; }
 .referral-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .referral-table th { text-align: left; padding: 10px 12px; color: #6b7a70; font-weight: 600; border-bottom: 1px solid #eef1ec; }
 .referral-table td { padding: 12px; border-bottom: 1px solid #f3f5f2; color: #1f2d22; }
