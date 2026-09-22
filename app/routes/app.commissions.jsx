@@ -502,6 +502,14 @@ export default function Commissions() {
                 .filter((i) => i.status === "PENDING")
                 .reduce((s, i) => s + Number(i.commissionAmount || 0), 0);
 
+              const groupApproved = group.items
+                .filter((i) => i.status === "APPROVED")
+                .reduce((s, i) => s + Number(i.commissionAmount || 0), 0);
+
+              const groupPaid = group.items
+                .filter((i) => i.status === "PAID")
+                .reduce((s, i) => s + Number(i.commissionAmount || 0), 0);
+
               const groupTotal = group.items.reduce(
                 (s, i) => s + Number(i.commissionAmount || 0),
                 0
@@ -530,7 +538,23 @@ export default function Commissions() {
                     <div style={styles.groupHeaderRight}>
                       <div style={styles.groupHeaderStat}>
                         <div style={styles.muted}>Pending</div>
-                        <strong>₹{groupPending.toFixed(2)}</strong>
+                        <strong style={styles.pendingText}>
+                          ₹{groupPending.toFixed(2)}
+                        </strong>
+                      </div>
+
+                      <div style={styles.groupHeaderStat}>
+                        <div style={styles.muted}>Approved</div>
+                        <strong style={styles.approvedText}>
+                          ₹{groupApproved.toFixed(2)}
+                        </strong>
+                      </div>
+
+                      <div style={styles.groupHeaderStat}>
+                        <div style={styles.muted}>Paid</div>
+                        <strong style={styles.paidText}>
+                          ₹{groupPaid.toFixed(2)}
+                        </strong>
                       </div>
 
                       <div style={styles.groupHeaderStat}>
@@ -1167,6 +1191,18 @@ const styles = {
   groupHeaderStat: {
     textAlign: "right",
     minWidth: "90px",
+  },
+
+  pendingText: {
+    color: "#c76b00",
+  },
+
+  approvedText: {
+    color: "#16803c",
+  },
+
+  paidText: {
+    color: "#2864c7",
   },
 
   groupArrow: {
