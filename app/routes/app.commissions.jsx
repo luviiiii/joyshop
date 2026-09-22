@@ -208,6 +208,19 @@ export default function Commissions() {
 
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [expandedAmbassadors, setExpandedAmbassadors] = useState(new Set());
+
+  function toggleAmbassador(key) {
+    setExpandedAmbassadors((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
 
   function startEditing(item) {
     setEditingId(item.id);
@@ -268,6 +281,30 @@ export default function Commissions() {
       sum + Number(item.orderAmount || 0),
     0
   );
+
+  /*
+   * Group commissions by ambassador, preserving the existing
+   * newest-first order within each group (already sorted by the
+   * loader). Groups themselves are ordered by that same newest-
+   * first order (based on each group's most recent commission).
+   */
+  const groupsMap = new Map();
+
+  for (const item of commissions) {
+    const key = item.ambassador?.id || "unknown";
+
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, {
+        key,
+        ambassador: item.ambassador || null,
+        items: [],
+      });
+    }
+
+    groupsMap.get(key).items.push(item);
+  }
+
+  const groups = Array.from(groupsMap.values());
 
   return (
     <div style={styles.page}>
@@ -346,7 +383,7 @@ export default function Commissions() {
       </div>
 
 
-      {/* TABLE */}
+      {/* AMBASSADOR-GROUPED COMMISSION HISTORY */}
 
       <div style={styles.card}>
 
@@ -358,7 +395,8 @@ export default function Commissions() {
             </h2>
 
             <p style={styles.cardSubtitle}>
-              Orders generated through your referral links.
+              Orders generated through your referral links, grouped by
+              ambassador.
             </p>
           </div>
 
@@ -386,342 +424,387 @@ export default function Commissions() {
 
         ) : (
 
-          <div style={styles.tableWrapper}>
+          <div>
 
-            <table style={styles.table}>
+            {groups.map((group) => {
+              const isOpen = expandedAmbassadors.has(group.key);
 
-              <thead>
+              const groupPending = group.items
+                .filter((i) => i.status === "PENDING")
+                .reduce((s, i) => s + Number(i.commissionAmount || 0), 0);
 
-                <tr>
+              const groupTotal = group.items.reduce(
+                (s, i) => s + Number(i.commissionAmount || 0),
+                0
+              );
 
-                  <th style={styles.th}>
-                    AMBASSADOR
-                  </th>
+              return (
+                <div key={group.key} style={styles.groupWrapper}>
 
-                  <th style={styles.th}>
-                    CUSTOMER
-                  </th>
-
-                  <th style={styles.th}>
-                    ORDER
-                  </th>
-
-                  <th style={styles.th}>
-                    ORDER AMOUNT
-                  </th>
-
-                  <th style={styles.th}>
-                    RATE
-                  </th>
-
-                  <th style={styles.th}>
-                    COMMISSION
-                  </th>
-
-                  <th style={styles.th}>
-                    STATUS
-                  </th>
-
-                  <th style={styles.th}>
-                    DATE
-                  </th>
-
-                  <th style={styles.th}>
-                    ACTION
-                  </th>
-
-                </tr>
-
-              </thead>
-
-
-              <tbody>
-
-                {commissions.map((item) => {
-                  const isEditingThisRow = editingId === item.id;
-                  const canEditOrReject =
-                    item.status === "PENDING" ||
-                    item.status === "APPROVED";
-
-                  return (
-
-                  <tr
-                    key={item.id}
-                    style={styles.tr}
+                  <button
+                    type="button"
+                    onClick={() => toggleAmbassador(group.key)}
+                    style={styles.groupHeaderButton}
                   >
-
-                    {/* AMBASSADOR */}
-
-                    <td style={styles.td}>
-
+                    <div style={styles.groupHeaderLeft}>
                       <div style={styles.name}>
-                        {item.ambassador?.name || "-"}
+                        {group.ambassador?.name || "Unknown Ambassador"}
                       </div>
 
                       <div style={styles.muted}>
-                        {item.ambassador?.referralCode || "-"}
+                        {group.ambassador?.referralCode || "-"}
+                        {" "}&nbsp;•&nbsp; {group.items.length} order
+                        {group.items.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+
+                    <div style={styles.groupHeaderRight}>
+                      <div style={styles.groupHeaderStat}>
+                        <div style={styles.muted}>Pending</div>
+                        <strong>₹{groupPending.toFixed(2)}</strong>
                       </div>
 
-                    </td>
-
-
-                    {/* CUSTOMER */}
-
-                    <td style={styles.td}>
-
-                      <div style={styles.name}>
-                        {item.referral?.referredName ||
-                          "Customer"}
-                      </div>
-
-                      <div style={styles.muted}>
-                        {item.referral?.referredEmail ||
-                          item.referral?.referredCustomerId ||
-                          "-"}
-                      </div>
-
-                    </td>
-
-
-                    {/* ORDER */}
-
-                    <td style={styles.td}>
-                      <strong>
-                        {item.orderId || "-"}
-                      </strong>
-                    </td>
-
-
-                    {/* ORDER AMOUNT */}
-
-                    <td style={styles.td}>
-                      ₹
-                      {Number(
-                        item.orderAmount || 0
-                      ).toFixed(2)}
-                    </td>
-
-
-                    {/* RATE */}
-
-                    <td style={styles.td}>
-                      {item.commissionRate != null
-                        ? `${item.commissionRate}%`
-                        : "-"}
-                    </td>
-
-
-                    {/* COMMISSION */}
-
-                    <td style={styles.td}>
-
-                      {isEditingThisRow ? (
-                        <div style={styles.editRow}>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={editValue}
-                            onChange={(e) =>
-                              setEditValue(e.target.value)
-                            }
-                            style={styles.editInput}
-                            autoFocus
-                          />
-                        </div>
-                      ) : (
+                      <div style={styles.groupHeaderStat}>
+                        <div style={styles.muted}>Total</div>
                         <strong style={styles.money}>
-                          ₹
-                          {Number(
-                            item.commissionAmount || 0
-                          ).toFixed(2)}
+                          ₹{groupTotal.toFixed(2)}
                         </strong>
-                      )}
+                      </div>
 
-                    </td>
+                      <span
+                        aria-hidden="true"
+                        style={styles.groupArrow}
+                      >
+                        {isOpen ? "▲" : "▼"}
+                      </span>
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div style={styles.tableWrapper}>
+
+                      <table style={styles.table}>
+
+                        <thead>
+
+                          <tr>
+
+                            <th style={styles.th}>
+                              CUSTOMER
+                            </th>
+
+                            <th style={styles.th}>
+                              ORDER
+                            </th>
+
+                            <th style={styles.th}>
+                              ORDER AMOUNT
+                            </th>
+
+                            <th style={styles.th}>
+                              RATE
+                            </th>
+
+                            <th style={styles.th}>
+                              COMMISSION
+                            </th>
+
+                            <th style={styles.th}>
+                              STATUS
+                            </th>
+
+                            <th style={styles.th}>
+                              DATE
+                            </th>
+
+                            <th style={styles.th}>
+                              ACTION
+                            </th>
+
+                          </tr>
+
+                        </thead>
 
 
-                    {/* STATUS */}
+                        <tbody>
 
-                    <td style={styles.td}>
+                          {group.items.map((item) => {
+                            const isEditingThisRow = editingId === item.id;
+                            const canEditOrReject =
+                              item.status === "PENDING" ||
+                              item.status === "APPROVED";
 
-                      <StatusBadge
-                        status={item.status}
-                      />
+                            return (
 
-                    </td>
-
-
-                    {/* DATE */}
-
-                    <td style={styles.td}>
-
-                      {item.createdAt
-                        ? new Date(
-                            item.createdAt
-                          ).toLocaleDateString(
-                            "en-IN",
-                            {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            }
-                          )
-                        : "-"}
-
-                    </td>
-
-
-                    {/* ACTION */}
-
-                    <td style={styles.td}>
-
-                      {isEditingThisRow ? (
-
-                        <div style={styles.actionRow}>
-                          <button
-                            type="button"
-                            disabled={isSubmitting}
-                            onClick={() => saveEditing(item.id)}
-                            style={
-                              isSubmitting
-                                ? styles.buttonDisabled
-                                : styles.approveButton
-                            }
-                          >
-                            Save
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={cancelEditing}
-                            style={styles.cancelButton}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-
-                      ) : (
-
-                        <div style={styles.actionRow}>
-
-                          {item.status === "PENDING" && (
-                            <fetcher.Form method="post">
-                              <input
-                                type="hidden"
-                                name="commissionId"
-                                value={item.id}
-                              />
-                              <input
-                                type="hidden"
-                                name="action"
-                                value="approve"
-                              />
-                              <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                style={
-                                  isSubmitting
-                                    ? styles.buttonDisabled
-                                    : styles.approveButton
-                                }
-                              >
-                                {isSubmitting
-                                  ? "Approving..."
-                                  : "Approve"}
-                              </button>
-                            </fetcher.Form>
-                          )}
-
-                          {item.status === "APPROVED" && (
-                            <fetcher.Form method="post">
-                              <input
-                                type="hidden"
-                                name="commissionId"
-                                value={item.id}
-                              />
-                              <input
-                                type="hidden"
-                                name="action"
-                                value="paid"
-                              />
-                              <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                style={
-                                  isSubmitting
-                                    ? styles.buttonDisabled
-                                    : styles.paidButton
-                                }
-                              >
-                                {isSubmitting
-                                  ? "Processing..."
-                                  : "Mark Paid"}
-                              </button>
-                            </fetcher.Form>
-                          )}
-
-                          {canEditOrReject && (
-                            <button
-                              type="button"
-                              onClick={() => startEditing(item)}
-                              style={styles.editButton}
+                            <tr
+                              key={item.id}
+                              style={styles.tr}
                             >
-                              Edit
-                            </button>
-                          )}
 
-                          {canEditOrReject && (
-                            <fetcher.Form method="post">
-                              <input
-                                type="hidden"
-                                name="commissionId"
-                                value={item.id}
-                              />
-                              <input
-                                type="hidden"
-                                name="action"
-                                value="reject"
-                              />
-                              <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                style={
-                                  isSubmitting
-                                    ? styles.buttonDisabled
-                                    : styles.rejectButton
-                                }
-                              >
-                                Reject
-                              </button>
-                            </fetcher.Form>
-                          )}
+                              {/* CUSTOMER */}
 
-                          {item.status === "PAID" && (
-                            <span style={styles.completed}>
-                              Completed
-                            </span>
-                          )}
+                              <td style={styles.td}>
 
-                          {item.status === "REJECTED" && (
-                            <span style={styles.rejectedText}>
-                              Rejected
-                            </span>
-                          )}
+                                <div style={styles.name}>
+                                  {item.referral?.referredName ||
+                                    "Customer"}
+                                </div>
 
-                        </div>
+                                <div style={styles.muted}>
+                                  {item.referral?.referredEmail ||
+                                    item.referral?.referredCustomerId ||
+                                    "-"}
+                                </div>
 
-                      )}
+                              </td>
 
-                    </td>
 
-                  </tr>
-                  );
-                })}
+                              {/* ORDER */}
 
-              </tbody>
+                              <td style={styles.td}>
+                                <strong>
+                                  {item.orderId || "-"}
+                                </strong>
+                              </td>
 
-            </table>
+
+                              {/* ORDER AMOUNT */}
+
+                              <td style={styles.td}>
+                                ₹
+                                {Number(
+                                  item.orderAmount || 0
+                                ).toFixed(2)}
+                              </td>
+
+
+                              {/* RATE */}
+
+                              <td style={styles.td}>
+                                {item.commissionRate != null
+                                  ? `${item.commissionRate}%`
+                                  : "-"}
+                              </td>
+
+
+                              {/* COMMISSION */}
+
+                              <td style={styles.td}>
+
+                                {isEditingThisRow ? (
+                                  <div style={styles.editRow}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={editValue}
+                                      onChange={(e) =>
+                                        setEditValue(e.target.value)
+                                      }
+                                      style={styles.editInput}
+                                      autoFocus
+                                    />
+                                  </div>
+                                ) : (
+                                  <strong style={styles.money}>
+                                    ₹
+                                    {Number(
+                                      item.commissionAmount || 0
+                                    ).toFixed(2)}
+                                  </strong>
+                                )}
+
+                              </td>
+
+
+                              {/* STATUS */}
+
+                              <td style={styles.td}>
+
+                                <StatusBadge
+                                  status={item.status}
+                                />
+
+                              </td>
+
+
+                              {/* DATE */}
+
+                              <td style={styles.td}>
+
+                                {item.createdAt
+                                  ? new Date(
+                                      item.createdAt
+                                    ).toLocaleDateString(
+                                      "en-IN",
+                                      {
+                                        day: "2-digit",
+                                        month: "short",
+                                        year: "numeric",
+                                      }
+                                    )
+                                  : "-"}
+
+                              </td>
+
+
+                              {/* ACTION */}
+
+                              <td style={styles.td}>
+
+                                {isEditingThisRow ? (
+
+                                  <div style={styles.actionRow}>
+                                    <button
+                                      type="button"
+                                      disabled={isSubmitting}
+                                      onClick={() => saveEditing(item.id)}
+                                      style={
+                                        isSubmitting
+                                          ? styles.buttonDisabled
+                                          : styles.approveButton
+                                      }
+                                    >
+                                      Save
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={cancelEditing}
+                                      style={styles.cancelButton}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+
+                                ) : (
+
+                                  <div style={styles.actionRow}>
+
+                                    {item.status === "PENDING" && (
+                                      <fetcher.Form method="post">
+                                        <input
+                                          type="hidden"
+                                          name="commissionId"
+                                          value={item.id}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name="action"
+                                          value="approve"
+                                        />
+                                        <button
+                                          type="submit"
+                                          disabled={isSubmitting}
+                                          style={
+                                            isSubmitting
+                                              ? styles.buttonDisabled
+                                              : styles.approveButton
+                                          }
+                                        >
+                                          {isSubmitting
+                                            ? "Approving..."
+                                            : "Approve"}
+                                        </button>
+                                      </fetcher.Form>
+                                    )}
+
+                                    {item.status === "APPROVED" && (
+                                      <fetcher.Form method="post">
+                                        <input
+                                          type="hidden"
+                                          name="commissionId"
+                                          value={item.id}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name="action"
+                                          value="paid"
+                                        />
+                                        <button
+                                          type="submit"
+                                          disabled={isSubmitting}
+                                          style={
+                                            isSubmitting
+                                              ? styles.buttonDisabled
+                                              : styles.paidButton
+                                          }
+                                        >
+                                          {isSubmitting
+                                            ? "Processing..."
+                                            : "Mark Paid"}
+                                        </button>
+                                      </fetcher.Form>
+                                    )}
+
+                                    {canEditOrReject && (
+                                      <button
+                                        type="button"
+                                        onClick={() => startEditing(item)}
+                                        style={styles.editButton}
+                                      >
+                                        Edit
+                                      </button>
+                                    )}
+
+                                    {canEditOrReject && (
+                                      <fetcher.Form method="post">
+                                        <input
+                                          type="hidden"
+                                          name="commissionId"
+                                          value={item.id}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name="action"
+                                          value="reject"
+                                        />
+                                        <button
+                                          type="submit"
+                                          disabled={isSubmitting}
+                                          style={
+                                            isSubmitting
+                                              ? styles.buttonDisabled
+                                              : styles.rejectButton
+                                          }
+                                        >
+                                          Reject
+                                        </button>
+                                      </fetcher.Form>
+                                    )}
+
+                                    {item.status === "PAID" && (
+                                      <span style={styles.completed}>
+                                        Completed
+                                      </span>
+                                    )}
+
+                                    {item.status === "REJECTED" && (
+                                      <span style={styles.rejectedText}>
+                                        Rejected
+                                      </span>
+                                    )}
+
+                                  </div>
+
+                                )}
+
+                              </td>
+
+                            </tr>
+                            );
+                          })}
+
+                        </tbody>
+
+                      </table>
+
+                    </div>
+                  )}
+
+                </div>
+              );
+            })}
 
           </div>
 
@@ -734,6 +817,10 @@ export default function Commissions() {
             Total orders:{" "}
             <strong>
               {commissions.length}
+            </strong>
+            {" "}&nbsp;•&nbsp; Ambassadors:{" "}
+            <strong>
+              {groups.length}
             </strong>
           </div>
 
@@ -944,6 +1031,46 @@ const styles = {
     fontSize: "13px",
   },
 
+  groupWrapper: {
+    borderBottom: "1px solid #edf1ee",
+  },
+
+  groupHeaderButton: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "16px",
+    padding: "18px 24px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    textAlign: "left",
+    font: "inherit",
+    color: "inherit",
+  },
+
+  groupHeaderLeft: {
+    minWidth: 0,
+  },
+
+  groupHeaderRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "24px",
+    flexShrink: 0,
+  },
+
+  groupHeaderStat: {
+    textAlign: "right",
+    minWidth: "90px",
+  },
+
+  groupArrow: {
+    fontSize: "16px",
+    color: "#7a867f",
+  },
+
   tableWrapper: {
     overflowX: "auto",
   },
@@ -951,7 +1078,7 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "1300px",
+    minWidth: "1150px",
   },
 
   th: {

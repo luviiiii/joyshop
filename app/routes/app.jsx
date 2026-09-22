@@ -36,10 +36,6 @@ export default function App() {
           Commissions
         </s-link>
 
-        <s-link href="/app/credits">
-          Customer Credits
-        </s-link>
-
         <s-link href="/app/payouts">
           Payouts
         </s-link>
