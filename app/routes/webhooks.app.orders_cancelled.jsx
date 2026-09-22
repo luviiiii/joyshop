@@ -99,6 +99,31 @@ export const action = async ({ request }) => {
         commission.id
       );
 
+      /*
+       * This commission's amount was already added to the
+       * ambassador's totalEarnings/totalOrders when the order
+       * was originally paid — reverse that now that it's
+       * cancelled, so the ambassador's stored totals stay
+       * accurate.
+       */
+      await db.ambassador.update({
+        where: { id: commission.ambassadorId },
+        data: {
+          totalOrders: {
+            decrement: 1,
+          },
+          totalEarnings: {
+            decrement: Number(commission.commissionAmount || 0),
+          },
+        },
+      });
+
+      console.log(
+        "Ambassador totals corrected: -1 order, -",
+        commission.commissionAmount,
+        "earnings"
+      );
+
       const now = new Date();
       const monthStart = new Date(
         now.getFullYear(),
@@ -150,6 +175,8 @@ export const action = async ({ request }) => {
       );
 
       for (const item of pendingThisMonth) {
+        const oldAmount = Number(item.commissionAmount || 0);
+
         const recalculatedAmount =
           (Number(item.orderAmount || 0) * newCommissionRate) / 100;
 
@@ -160,6 +187,19 @@ export const action = async ({ request }) => {
             commissionAmount: recalculatedAmount,
           },
         });
+
+        const delta = recalculatedAmount - oldAmount;
+
+        if (delta !== 0) {
+          await db.ambassador.update({
+            where: { id: commission.ambassadorId },
+            data: {
+              totalEarnings: {
+                increment: delta,
+              },
+            },
+          });
+        }
       }
 
       console.log(

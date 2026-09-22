@@ -78,10 +78,12 @@ export const loader = async ({ request }) => {
     0
   );
 
-  const totalCommission = commissions.reduce(
-    (total, commission) => total + commission.commissionAmount,
-    0
-  );
+  const totalCommission = commissions
+    .filter((commission) => commission.status !== "REJECTED")
+    .reduce(
+      (total, commission) => total + commission.commissionAmount,
+      0
+    );
 
   const pendingCommission = commissions
     .filter((commission) => commission.status === "PENDING")

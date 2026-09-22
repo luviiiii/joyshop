@@ -575,6 +575,8 @@ export const action = async ({ request }) => {
     );
 
     for (const item of pendingThisMonth) {
+      const oldAmount = Number(item.commissionAmount || 0);
+
       const recalculatedAmount =
         (Number(item.orderAmount || 0) * commissionRate) / 100;
 
@@ -585,6 +587,29 @@ export const action = async ({ request }) => {
           commissionAmount: recalculatedAmount,
         },
       });
+
+      /*
+       * This order's own new commission is handled by the
+       * totalEarnings increment further below — skip it here to
+       * avoid double-counting. For every OTHER pending
+       * commission whose amount just changed due to the slab
+       * recalculation, adjust the ambassador's stored
+       * totalEarnings by the difference so it stays accurate.
+       */
+      if (item.id !== commission.id) {
+        const delta = recalculatedAmount - oldAmount;
+
+        if (delta !== 0) {
+          await db.ambassador.update({
+            where: { id: ambassador.id },
+            data: {
+              totalEarnings: {
+                increment: delta,
+              },
+            },
+          });
+        }
+      }
     }
 
     const commissionAmount =

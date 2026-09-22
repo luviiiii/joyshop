@@ -282,11 +282,13 @@ export default function Commissions() {
           (item) => monthKey(item.createdAt) === selectedMonth
         );
 
-  const totalCommission = filteredCommissions.reduce(
-    (sum, item) =>
-      sum + Number(item.commissionAmount || 0),
-    0
-  );
+  const totalCommission = filteredCommissions
+    .filter((item) => item.status !== "REJECTED")
+    .reduce(
+      (sum, item) =>
+        sum + Number(item.commissionAmount || 0),
+      0
+    );
 
   const pendingCommission = filteredCommissions
     .filter((item) => item.status === "PENDING")
@@ -312,11 +314,13 @@ export default function Commissions() {
       0
     );
 
-  const totalSales = filteredCommissions.reduce(
-    (sum, item) =>
-      sum + Number(item.orderAmount || 0),
-    0
-  );
+  const totalSales = filteredCommissions
+    .filter((item) => item.status !== "REJECTED")
+    .reduce(
+      (sum, item) =>
+        sum + Number(item.orderAmount || 0),
+      0
+    );
 
   /*
    * Group commissions by ambassador, preserving the existing
@@ -510,10 +514,10 @@ export default function Commissions() {
                 .filter((i) => i.status === "PAID")
                 .reduce((s, i) => s + Number(i.commissionAmount || 0), 0);
 
-              const groupTotal = group.items.reduce(
-                (s, i) => s + Number(i.commissionAmount || 0),
-                0
-              );
+              // Excludes REJECTED (e.g. from cancelled orders) — a
+              // cancelled order's commission shouldn't count toward
+              // the ambassador's total.
+              const groupTotal = groupPending + groupApproved + groupPaid;
 
               return (
                 <div key={group.key} style={styles.groupWrapper}>
