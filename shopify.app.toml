@@ -63,3 +63,7 @@ subpath = "joyshop"
 [[webhooks.subscriptions]]
 topics = ["customers/create"]
 uri = "/webhooks/app/customers_create"
+
+[[webhooks.subscriptions]]
+uri = "/webhooks/app/orders_cancelled"
+topics = ["orders/cancelled"]
