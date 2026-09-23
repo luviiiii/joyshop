@@ -293,11 +293,36 @@
 
     if (!isLoggedIn) {
       /*
-       * Don't force a redirect on every single page view for
-       * an existing cookie visitor — only the initial ?ref=
-       * click forces sign-in. Once they choose to log in on
-       * their own, the block below links the referral.
+       * We can't just wait for a future page load to notice
+       * they've logged in — some login/signup widgets update
+       * the page in place without a real navigation, in which
+       * case Liquid's isLoggedIn snapshot from this page load
+       * would stay stale forever. Instead, poll the tracking
+       * endpoint directly for a short window: Shopify resolves
+       * the actual logged-in-customer for EVERY request fresh,
+       * server-side, independent of what this page believes.
+       * We stop as soon as it succeeds, or after ~2 minutes.
        */
+      let attempts = 0;
+      const maxAttempts = 40;
+      const pollIntervalMs = 3000;
+
+      const poll = setInterval(async function () {
+        attempts++;
+
+        const data = await trackReferralVisit(existingReferral);
+
+        if (data && data.success) {
+          localStorage.setItem(LINKED_KEY, existingReferral);
+          clearInterval(poll);
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(poll);
+        }
+      }, pollIntervalMs);
+
       return;
     }
 
