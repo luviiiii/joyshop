@@ -194,26 +194,38 @@
     {% endif %};
 
   /*
-   * If the customer is now logged in AND we stashed a
-   * post-login redirect destination before sending them to
-   * sign in/sign up, honor it now and clear the flag so this
-   * only fires once (not on every subsequent page load).
+   * If the customer is now logged in and we stashed a post-
+   * login redirect destination, we must NOT navigate away
+   * until the referral-linking call below (inside
+   * handleReferral) has actually completed — otherwise the
+   * navigation can race ahead of and cancel that request,
+   * silently losing the tag/referral link. So this whole flow
+   * runs sequentially: link the referral first, THEN redirect.
    */
-  if (isLoggedIn) {
-    const pendingRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
 
-    sessionStorage.removeItem(FORCED_REFERRAL_LOGIN_KEY);
+  async function run() {
+    if (isLoggedIn) {
+      await handleReferral();
 
-    if (pendingRedirect) {
-      sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+      const pendingRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
 
-      console.log(
-        "JOYSHOP: Redirecting after login to:",
-        pendingRedirect
-      );
+      sessionStorage.removeItem(FORCED_REFERRAL_LOGIN_KEY);
 
-      window.location.replace(pendingRedirect);
+      if (pendingRedirect) {
+        sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+
+        console.log(
+          "JOYSHOP: Redirecting after login to:",
+          pendingRedirect
+        );
+
+        window.location.replace(pendingRedirect);
+      }
+
+      return;
     }
+
+    handleReferral();
   }
 
   async function handleReferral() {
@@ -305,7 +317,7 @@
     window.location.replace(loginUrl);
   }
 
-  handleReferral();
+  run();
 
 })();
 </script>
