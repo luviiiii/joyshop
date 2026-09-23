@@ -384,6 +384,30 @@ export const loader = async ({ request }) => {
          * =====================================================
          */
 
+        /*
+         * Tag the customer so they match the Customer Segment
+         * your shared discount code (WELCOME200) is scoped to.
+         * This must run unconditionally for every genuine new
+         * referral — it's what makes the discount actually work
+         * at checkout, independent of the legacy "first order
+         * credit" setting below.
+         */
+
+        if (admin) {
+          try {
+            await tagCustomerAsReferred(admin, loggedInCustomerId);
+
+            console.log(
+              "Customer tagged as referred:",
+              loggedInCustomerId
+            );
+          } catch (tagError) {
+            console.error("CUSTOMER TAGGING ERROR:");
+            console.error(tagError);
+            // Don't let a tagging failure block referral tracking.
+          }
+        }
+
         try {
           const settings = await db.referralSettings.findUnique({
             where: { shop },
@@ -397,13 +421,6 @@ export const loader = async ({ request }) => {
           );
 
           if (creditEnabled && admin) {
-            await tagCustomerAsReferred(admin, loggedInCustomerId);
-
-            console.log(
-              "Customer tagged as referred:",
-              loggedInCustomerId
-            );
-
             await db.referralCredit.create({
               data: {
                 shop,
