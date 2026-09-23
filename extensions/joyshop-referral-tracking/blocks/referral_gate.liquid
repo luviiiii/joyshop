@@ -237,6 +237,22 @@
 
       setReferralCookie(referralCodeFromUrl);
 
+      /*
+       * The welcome popup (snippets/referral-welcome-popup.liquid)
+       * normally captures ?ref= itself via its own DOMContentLoaded
+       * listener — but since we redirect away immediately below,
+       * that listener never gets a chance to run on this first
+       * visit. Save it directly under the exact same key it
+       * expects, so the popup still finds it once the visitor is
+       * logged in later, regardless of that race.
+       */
+      try {
+        sessionStorage.setItem(
+          "jo_referral_pending_code",
+          referralCodeFromUrl
+        );
+      } catch (e) {}
+
       if (!isLoggedIn) {
         /*
          * Fire the visit-tracking request in the background
