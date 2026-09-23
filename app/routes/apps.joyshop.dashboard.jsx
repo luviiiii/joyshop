@@ -85,6 +85,25 @@ export async function loader({ request }) {
         { label: "20 Aug", value: 50 },
         { label: "24 Aug", value: 90 },
       ],
+
+      totalEarningsAllTime: 252.5,
+
+      earningsByPeriod: {
+        thisMonth: 150,
+        previousMonth: 102.5,
+        last3Months: 252.5,
+      },
+
+      monthlyOrderValue: 2525,
+
+      slabInfo: {
+        isMaxTier: false,
+        currentRate: 7,
+        nextThreshold: 30000,
+        nextRate: 10,
+      },
+
+      kycStatus: "NOT_SUBMITTED",
     };
   }
 
@@ -756,6 +775,10 @@ export default function AmbassadorDashboard() {
 
   const referralLink = `https://justorganik.com/apps/joyshop/ref/${ambassador.referralCode}`;
 
+  const whatsappShareMessage = `Discover Just Organik — certified organic groceries, delivered home.\n\nUse my link to get your welcome credit on your first order:\n${referralLink}`;
+  const whatsappShareUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappShareMessage)}`;
+  const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralLink)}`;
+
   const actionData = payoutFetcher.data;
   const isSubmitting = payoutFetcher.state === "submitting";
 
@@ -811,28 +834,6 @@ export default function AmbassadorDashboard() {
 
   function copyReferralLink() {
     copyText(referralLink, setCopied);
-  }
-
-  function shareWhatsApp() {
-    const message = `Discover Just Organik — certified organic groceries, delivered home.\n\nUse my link to get your welcome credit on your first order:\n${referralLink}`;
-    window.open(
-      `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`,
-      "_blank",
-      "noopener,noreferrer"
-    );
-  }
-
-  function shareFacebook() {
-    window.open(
-      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralLink)}`,
-      "_blank",
-      "noopener,noreferrer"
-    );
-  }
-
-  function shareInstagram() {
-    copyReferralLink();
-    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
   }
 
   async function shareGeneric() {
@@ -1167,9 +1168,9 @@ export default function AmbassadorDashboard() {
 
               <div className="share-row">
                 <span>Share via</span>
-                <button type="button" className="share-icon whatsapp" onClick={shareWhatsApp} aria-label="Share on WhatsApp"><IconWhatsApp /></button>
-                <button type="button" className="share-icon facebook" onClick={shareFacebook} aria-label="Share on Facebook"><IconFacebook /></button>
-                <button type="button" className="share-icon instagram" onClick={shareInstagram} aria-label="Share on Instagram"><IconInstagram /></button>
+                <a href={whatsappShareUrl} target="_blank" rel="noopener noreferrer" className="share-icon whatsapp" aria-label="Share on WhatsApp"><IconWhatsApp /></a>
+                <a href={facebookShareUrl} target="_blank" rel="noopener noreferrer" className="share-icon facebook" aria-label="Share on Facebook"><IconFacebook /></a>
+                <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="share-icon instagram" onClick={copyReferralLink} aria-label="Share on Instagram"><IconInstagram /></a>
                 <button type="button" className="share-icon generic" onClick={shareGeneric} aria-label="More sharing options">⤴</button>
               </div>
             </div>
@@ -1396,9 +1397,9 @@ export default function AmbassadorDashboard() {
             </div>
 
             <div className="share-row wide">
-              <button type="button" className="share whatsapp" onClick={shareWhatsApp}><IconWhatsApp /> WhatsApp</button>
-              <button type="button" className="share facebook" onClick={shareFacebook}><IconFacebook /> Facebook</button>
-              <button type="button" className="share instagram" onClick={shareInstagram}><IconInstagram /> Instagram</button>
+              <a href={whatsappShareUrl} target="_blank" rel="noopener noreferrer" className="share whatsapp"><IconWhatsApp /> WhatsApp</a>
+              <a href={facebookShareUrl} target="_blank" rel="noopener noreferrer" className="share facebook"><IconFacebook /> Facebook</a>
+              <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="share instagram" onClick={copyReferralLink}><IconInstagram /> Instagram</a>
             </div>
           </section>
 
