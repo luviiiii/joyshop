@@ -4,7 +4,7 @@ embedded = true
 name = "JOYSHOP"
 
 [access_scopes]
-scopes = "write_products,read_products,read_customers,read_orders,read_discounts,write_discounts,read_files,write_files,write_app_proxy" 
+scopes = "write_products,read_products,read_customers,write_customers,read_orders,read_discounts,write_discounts,read_files,write_files,write_app_proxy"
 optional_scopes = []
 use_legacy_install_flow = false
 
