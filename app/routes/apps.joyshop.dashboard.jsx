@@ -5,7 +5,7 @@ import {
   useLoaderData,
 } from "react-router";
 import { useState, useEffect } from "react";
-import SettingsModal from "./SettingsModal";
+import SettingsModal from "../components/SettingsModal";
 
 /* =========================================================
    LOADER
@@ -1552,6 +1552,9 @@ export default function AmbassadorDashboard() {
         referralLink={referralLink}
         copied={copied}
         onCopy={copyReferralLink}
+        kycStatus={kycStatus}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
       />
 
       <footer className="footer">
