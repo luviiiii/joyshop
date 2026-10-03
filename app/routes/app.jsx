@@ -40,6 +40,10 @@ export default function App() {
           Payouts
         </s-link>
 
+        <s-link href="/app/payout-report">
+          Payout Report
+        </s-link>
+
         <s-link href="/app/settings">
           Program Settings
         </s-link>
