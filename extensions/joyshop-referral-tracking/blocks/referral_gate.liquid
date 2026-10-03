@@ -1,12 +1,13 @@
 {% comment %}
   JOYSHOP Referral Gate
 
-  - Reads ?ref=REFERRAL_CODE
-  - Saves referral code in a cookie (30 days)
-  - Tracks the visit via the JOYSHOP app (correct endpoint)
-  - Forces non-logged-in visitors to sign in / create an account
-    before they can continue, so the referral can be linked to
-    their customer ID
+  - Reads ?ref=REFERRAL_CODE and saves it in a cookie (30 days)
+  - Logs ONE visit per referral landing
+  - Sends non-logged-in visitors to sign in / sign up
+  - Keeps trying to link the referral until Shopify actually
+    knows who the customer is (only then is it marked "linked")
+  - Tells the welcome popup to show ONLY when a brand-new
+    referral was created (not for existing customers)
   - Also powers the "Copy referral link" button on the
     ambassador dashboard (works independently of ?ref=)
 {% endcomment %}
@@ -21,33 +22,25 @@
   const LINKED_KEY = "joyshop_referral_linked";
   const POST_LOGIN_REDIRECT_KEY = "joyshop_post_login_redirect";
   const FORCED_REFERRAL_LOGIN_KEY = "joyshop_forced_referral_login";
+  const WELCOME_KEY = "jo_referral_welcome"; // read by referral-welcome-popup
+  const WELCOME_EVENT = "joyshop:referral-welcome";
 
   /* =========================================================
      1. REFERRAL LINK COPY FUNCTIONALITY
-     (works independently of ?ref=, used on ambassador dashboard)
   ========================================================= */
 
   function setupReferralCopy() {
     const referralBoxes = document.querySelectorAll(".referral-box");
-
-    if (!referralBoxes.length) {
-      return;
-    }
+    if (!referralBoxes.length) return;
 
     referralBoxes.forEach(function (box) {
       const button =
         box.querySelector("button.referral-copy-btn") ||
         box.querySelector("button");
-
       const input = box.querySelector('input[type="text"]');
 
-      if (!button || !input) {
-        return;
-      }
-
-      if (button.dataset.joyshopCopyReady === "true") {
-        return;
-      }
+      if (!button || !input) return;
+      if (button.dataset.joyshopCopyReady === "true") return;
 
       button.dataset.joyshopCopyReady = "true";
 
@@ -55,10 +48,7 @@
         const originalText = button.innerText;
         const referralLink = input.value;
 
-        if (!referralLink) {
-          console.error("JOYSHOP: Referral link is empty.");
-          return;
-        }
+        if (!referralLink) return;
 
         try {
           if (navigator.clipboard && window.isSecureContext) {
@@ -67,31 +57,17 @@
             input.focus();
             input.select();
             input.setSelectionRange(0, input.value.length);
-
             const successful = document.execCommand("copy");
             input.blur();
-
-            if (!successful) {
-              throw new Error("Fallback copy failed");
-            }
+            if (!successful) throw new Error("Fallback copy failed");
           }
 
           button.innerText = "Copied!";
-          button.setAttribute("aria-label", "Referral link copied");
-
-          setTimeout(function () {
-            button.innerText = originalText;
-            button.setAttribute("aria-label", "Copy referral link");
-          }, 2000);
-
+          setTimeout(function () { button.innerText = originalText; }, 2000);
         } catch (error) {
           console.error("JOYSHOP: Referral link copy failed:", error);
-
           button.innerText = "Copy failed";
-
-          setTimeout(function () {
-            button.innerText = originalText;
-          }, 2000);
+          setTimeout(function () { button.innerText = originalText; }, 2000);
         }
       });
     });
@@ -103,125 +79,114 @@
     setupReferralCopy();
   }
 
-  const referralObserver = new MutationObserver(function () {
-    setupReferralCopy();
-  });
-
-  referralObserver.observe(document.body, {
+  new MutationObserver(setupReferralCopy).observe(document.documentElement, {
     childList: true,
     subtree: true,
   });
 
   /* =========================================================
-     2. COOKIE HELPERS
+     2. STORAGE HELPERS
   ========================================================= */
 
   function setReferralCookie(code) {
     if (!code) return;
-
-    const maxAge = COOKIE_DAYS * 24 * 60 * 60;
-
     document.cookie =
-      COOKIE_NAME +
-      "=" +
-      encodeURIComponent(code) +
-      "; path=/" +
-      "; max-age=" +
-      maxAge +
-      "; SameSite=Lax";
+      COOKIE_NAME + "=" + encodeURIComponent(code) +
+      "; path=/; max-age=" + COOKIE_DAYS * 24 * 60 * 60 + "; SameSite=Lax";
   }
 
   function getReferralFromCookie() {
     const cookies = document.cookie.split(";");
-
     for (let i = 0; i < cookies.length; i++) {
       const cookie = cookies[i].trim();
-
       if (cookie.indexOf(COOKIE_NAME + "=") === 0) {
-        return decodeURIComponent(
-          cookie.substring((COOKIE_NAME + "=").length)
-        );
+        return decodeURIComponent(cookie.substring(COOKIE_NAME.length + 1));
       }
     }
-
     return null;
   }
 
+  function safeGet(storage, key) {
+    try { return storage.getItem(key); } catch (e) { return null; }
+  }
+
+  function safeSet(storage, key, value) {
+    try { storage.setItem(key, value); } catch (e) {}
+  }
+
+  function safeRemove(storage, key) {
+    try { storage.removeItem(key); } catch (e) {}
+  }
+
   /* =========================================================
-     3. TRACK REFERRAL VISIT (correct endpoint)
+     3. SERVER CALL
   ========================================================= */
 
-  async function trackReferralVisit(code) {
+  async function callTrack(code, logVisit) {
     if (!code) return null;
 
     try {
       const response = await fetch(
-        "/apps/joyshop/ref/track?ref=" + encodeURIComponent(code),
+        "/apps/joyshop/ref/track?ref=" + encodeURIComponent(code) +
+          (logVisit ? "&visit=1" : ""),
         {
           method: "GET",
           credentials: "same-origin",
           keepalive: true,
-          headers: {
-            "Accept": "application/json",
-          },
+          cache: "no-store",
+          headers: { Accept: "application/json" },
         }
       );
 
       const data = await response.json();
-
       console.log("JOYSHOP REFERRAL TRACK RESPONSE:", data);
-
       return data;
-
     } catch (error) {
       console.error("JOYSHOP REFERRAL TRACKING ERROR:", error);
       return null;
     }
   }
 
+  /*
+   * A referral is only "done" when the server resolved a real
+   * logged-in customer. Anonymous responses (customerId: null)
+   * and errors are NOT treated as linked, so we keep trying.
+   */
+  function handleLinkResult(code, data) {
+    if (!data || !data.success || !data.customerId) return false;
+
+    safeSet(localStorage, LINKED_KEY, code + ":" + data.customerId);
+
+    if (data.isNewReferral) {
+      safeSet(sessionStorage, WELCOME_KEY, code);
+      window.dispatchEvent(new CustomEvent(WELCOME_EVENT, { detail: { code: code } }));
+    }
+
+    return true;
+  }
+
   /* =========================================================
-     4. MAIN REFERRAL FLOW
+     4. MAIN FLOW
   ========================================================= */
 
   const params = new URLSearchParams(window.location.search);
   const referralCodeFromUrl = params.get(REF_PARAM);
 
-  const isLoggedIn =
-    {% if customer %}
-      true
-    {% else %}
-      false
-    {% endif %};
-
-  /*
-   * If the customer is now logged in and we stashed a post-
-   * login redirect destination, we must NOT navigate away
-   * until the referral-linking call below (inside
-   * handleReferral) has actually completed — otherwise the
-   * navigation can race ahead of and cancel that request,
-   * silently losing the tag/referral link. So this whole flow
-   * runs sequentially: link the referral first, THEN redirect.
-   */
+  const isLoggedIn = {% if customer %}true{% else %}false{% endif %};
+  const currentCustomerId = {% if customer %}"{{ customer.id }}"{% else %}null{% endif %};
 
   async function run() {
     if (isLoggedIn) {
+      // Link first, THEN navigate, so the redirect can't cancel the request.
       await handleReferral();
 
-      const pendingRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
-
-      sessionStorage.removeItem(FORCED_REFERRAL_LOGIN_KEY);
+      const pendingRedirect = safeGet(sessionStorage, POST_LOGIN_REDIRECT_KEY);
+      safeRemove(sessionStorage, FORCED_REFERRAL_LOGIN_KEY);
 
       if (pendingRedirect) {
-        sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
-
-        console.log(
-          "JOYSHOP: Redirecting after login to:",
-          pendingRedirect
-        );
-
+        safeRemove(sessionStorage, POST_LOGIN_REDIRECT_KEY);
         window.location.replace(pendingRedirect);
       }
-
       return;
     }
 
@@ -229,137 +194,74 @@
   }
 
   async function handleReferral() {
-
-    /* ----- Case A: ?ref= present in the URL ----- */
+    /* ----- Case A: ?ref= in the URL (first landing) ----- */
 
     if (referralCodeFromUrl) {
       console.log("JOYSHOP: Referral code detected:", referralCodeFromUrl);
 
       setReferralCookie(referralCodeFromUrl);
 
-      /*
-       * The welcome popup (snippets/referral-welcome-popup.liquid)
-       * normally captures ?ref= itself via its own DOMContentLoaded
-       * listener — but since we redirect away immediately below,
-       * that listener never gets a chance to run on this first
-       * visit. Save it directly under the exact same key it
-       * expects, so the popup still finds it once the visitor is
-       * logged in later, regardless of that race.
-       */
-      try {
-        sessionStorage.setItem(
-          "jo_referral_pending_code",
-          referralCodeFromUrl
-        );
-      } catch (e) {}
+      // A new link click starts fresh, even on a browser that was
+      // linked before (e.g. a different family member).
+      safeRemove(localStorage, LINKED_KEY);
 
       if (!isLoggedIn) {
-        /*
-         * Fire the visit-tracking request in the background
-         * (keepalive keeps it alive through the immediate
-         * navigation below) and redirect to sign-in right away,
-         * instead of making the visitor wait on this network
-         * round-trip first. The cookie above already preserves
-         * the referral even if this call is still in flight.
-         */
-        trackReferralVisit(referralCodeFromUrl);
+        callTrack(referralCodeFromUrl, true); // keepalive survives the redirect
         redirectToSignIn();
         return;
       }
 
-      /*
-       * Already logged in — this call also creates the
-       * Referral record server-side, so we do wait for it here.
-       */
-      await trackReferralVisit(referralCodeFromUrl);
-
-      localStorage.setItem(LINKED_KEY, referralCodeFromUrl);
+      const data = await callTrack(referralCodeFromUrl, true);
+      handleLinkResult(referralCodeFromUrl, data);
       return;
     }
 
-    /* ----- Case B: no ?ref=, but a cookie exists ----- */
+    /* ----- Case B: no ?ref=, but a referral cookie exists ----- */
 
-    const existingReferral = getReferralFromCookie();
+    const code = getReferralFromCookie();
+    if (!code) return;
 
-    if (!existingReferral) {
+    const linked = safeGet(localStorage, LINKED_KEY) || "";
+
+    if (isLoggedIn) {
+      if (linked === code + ":" + currentCustomerId) return; // already done
+
+      console.log("JOYSHOP: Linking pending referral for logged-in customer:", code);
+      const data = await callTrack(code, false);
+      handleLinkResult(code, data);
       return;
     }
 
-    const alreadyLinked = localStorage.getItem(LINKED_KEY);
+    // Not logged in on this page load.
+    if (linked.indexOf(code + ":") === 0) return; // this browser already linked
 
-    if (alreadyLinked === existingReferral) {
-      return;
-    }
+    /*
+     * Some OTP / login widgets log the customer in WITHOUT a page
+     * reload, so this page's Liquid snapshot stays "not logged in".
+     * Poll quietly (no visit logged) until Shopify reports a real
+     * customer on the request, for up to ~2 minutes.
+     */
+    let attempts = 0;
+    const maxAttempts = 40;
 
-    if (!isLoggedIn) {
-      /*
-       * We can't just wait for a future page load to notice
-       * they've logged in — some login/signup widgets update
-       * the page in place without a real navigation, in which
-       * case Liquid's isLoggedIn snapshot from this page load
-       * would stay stale forever. Instead, poll the tracking
-       * endpoint directly for a short window: Shopify resolves
-       * the actual logged-in-customer for EVERY request fresh,
-       * server-side, independent of what this page believes.
-       * We stop as soon as it succeeds, or after ~2 minutes.
-       */
-      let attempts = 0;
-      const maxAttempts = 40;
-      const pollIntervalMs = 3000;
+    const poll = setInterval(async function () {
+      attempts++;
 
-      const poll = setInterval(async function () {
-        attempts++;
+      const data = await callTrack(code, false);
 
-        const data = await trackReferralVisit(existingReferral);
-
-        if (data && data.success) {
-          localStorage.setItem(LINKED_KEY, existingReferral);
-          clearInterval(poll);
-          return;
-        }
-
-        if (attempts >= maxAttempts) {
-          clearInterval(poll);
-        }
-      }, pollIntervalMs);
-
-      return;
-    }
-
-    console.log(
-      "JOYSHOP: Logged-in customer with pending referral cookie:",
-      existingReferral
-    );
-
-    const data = await trackReferralVisit(existingReferral);
-
-    if (data && data.success) {
-      localStorage.setItem(LINKED_KEY, existingReferral);
-    }
+      if (handleLinkResult(code, data) || attempts >= maxAttempts) {
+        clearInterval(poll);
+      }
+    }, 3000);
   }
 
   function redirectToSignIn() {
-    /*
-     * We use sessionStorage rather than a URL query param
-     * here, since Shopify's hosted sign-in/sign-up flow runs
-     * on a separate domain and may not reliably preserve
-     * arbitrary custom query params through that round-trip.
-     * sessionStorage persists across that redirect as long as
-     * it's the same browser tab, regardless of what happens
-     * on Shopify's side.
-     */
-    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, "/");
-    sessionStorage.setItem(FORCED_REFERRAL_LOGIN_KEY, "true");
-
-    const loginUrl = "/pages/account";
-
-    console.log("JOYSHOP: Redirecting to sign in:", loginUrl);
-
-    window.location.replace(loginUrl);
+    safeSet(sessionStorage, POST_LOGIN_REDIRECT_KEY, "/");
+    safeSet(sessionStorage, FORCED_REFERRAL_LOGIN_KEY, "true");
+    window.location.replace("/pages/account");
   }
 
   run();
-
 })();
 </script>
 

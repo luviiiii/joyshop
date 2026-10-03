@@ -241,18 +241,23 @@ export async function loader({ request }) {
    * =====================================================
    */
 
-  const now = new Date();
+  /*
+   * Month boundaries in INDIA time (IST, UTC+5:30), matching the
+   * orders/paid webhook. The server runs in UTC, so plain
+   * new Date(y, m, 1) would start each month at 5:30 AM IST.
+   */
+  const IST_OFFSET_MS = 330 * 60 * 1000;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const istYear = nowIst.getUTCFullYear();
+  const istMonth = nowIst.getUTCMonth();
 
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const istMonthStart = (monthOffset) =>
+    new Date(Date.UTC(istYear, istMonth + monthOffset, 1) - IST_OFFSET_MS);
 
-  const previousMonthStart = new Date(
-    now.getFullYear(),
-    now.getMonth() - 1,
-    1
-  );
-
-  const last3MonthsStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const thisMonthStart = istMonthStart(0);
+  const nextMonthStart = istMonthStart(1);
+  const previousMonthStart = istMonthStart(-1);
+  const last3MonthsStart = istMonthStart(-2);
 
   function sumEarningsInRange(start, end) {
     return commissions

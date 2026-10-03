@@ -7,29 +7,33 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_ADDRESS = "JOYSHOP <care@justorganik.com>";
 
 /*
- * The ONE shared discount code you create manually in Shopify
- * Admin (Discounts -> Create discount), scoped to a Customer
- * Segment matching REFERRED_CUSTOMER_TAG below. This avoids
- * generating a unique code per referral, since discount code
- * creation is capped (e.g. 25 total on some plans).
+ * The ONE shared discount code you created manually in Shopify
+ * Admin, scoped to a Customer Segment matching
+ * REFERRED_CUSTOMER_TAG below.
  */
 const WELCOME_DISCOUNT_CODE = "WELCOME200";
 const REFERRED_CUSTOMER_TAG = "joyshop-referred";
 const MINIMUM_ORDER_VALUE = 1500;
 
 /*
+ * The customers/create webhook can arrive a few seconds AFTER
+ * the browser calls this endpoint. So a customer also counts as
+ * brand new if Shopify says their account was created within
+ * this window and they have no orders yet.
+ */
+const NEW_CUSTOMER_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/*
  * Retries a database operation on transient connection failures
- * (Prisma P1001 - "Can't reach database server"). This can
- * happen briefly under load or cross-provider network blips.
- * Retries up to 2 extra times with a short delay before giving
- * up, so a momentary hiccup doesn't cost a real referral.
+ * (P1001 can't reach server, P1017 server closed connection).
  */
 async function withRetry(fn, retries = 2, delayMs = 300) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (error) {
-      const isConnectionError = error?.code === "P1001";
+      const isConnectionError =
+        error?.code === "P1001" || error?.code === "P1017";
       const isLastAttempt = attempt === retries;
 
       if (!isConnectionError || isLastAttempt) {
@@ -45,13 +49,12 @@ async function withRetry(fn, retries = 2, delayMs = 300) {
   }
 }
 
-function jsonResponse(data, status = 200, extraHeaders = {}) {
+function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
-      ...extraHeaders,
     },
   });
 }
@@ -68,23 +71,13 @@ function customerGid(customerId) {
   return `gid://shopify/Customer/${value}`;
 }
 
-/*
- * Tags the customer so they match the Customer Segment your
- * shared discount code is scoped to. Tagging has no practical
- * limit, unlike discount code creation.
- */
 async function tagCustomerAsReferred(admin, customerId) {
   const response = await admin.graphql(
     `#graphql
     mutation TagCustomer($id: ID!, $tags: [String!]!) {
       tagsAdd(id: $id, tags: $tags) {
-        node {
-          id
-        }
-        userErrors {
-          field
-          message
-        }
+        node { id }
+        userErrors { field message }
       }
     }`,
     {
@@ -96,25 +89,38 @@ async function tagCustomerAsReferred(admin, customerId) {
   );
 
   const result = await response.json();
-
   const userErrors = result?.data?.tagsAdd?.userErrors;
 
   if (userErrors && userErrors.length) {
     throw new Error(
-      "Tagging customer failed: " +
-        userErrors.map((e) => e.message).join(", ")
+      "Tagging customer failed: " + userErrors.map((e) => e.message).join(", ")
     );
   }
 
   return true;
 }
 
-async function sendWelcomeCreditEmail(
-  customerEmail,
-  firstName,
-  amount,
-  minimumOrderValue
-) {
+async function fetchCustomer(admin, customerId) {
+  const response = await admin.graphql(
+    `#graphql
+    query GetCustomer($id: ID!) {
+      customer(id: $id) {
+        email
+        firstName
+        lastName
+        phone
+        createdAt
+        numberOfOrders
+      }
+    }`,
+    { variables: { id: customerGid(customerId) } }
+  );
+
+  const result = await response.json();
+  return result?.data?.customer || null;
+}
+
+async function sendWelcomeCreditEmail(customerEmail, firstName, amount, minimumOrderValue) {
   try {
     await resend.emails.send({
       from: FROM_ADDRESS,
@@ -134,363 +140,292 @@ async function sendWelcomeCreditEmail(
             </span>
           </p>
           <p style="font-size: 13px; color: #6b7a70;">
-            Apply this code at checkout. Valid for one use only, on
-            your first qualifying order.
+            Apply this code at checkout while logged in to your account.
+            Valid for one use only, on your first qualifying order.
           </p>
         </div>
       `,
     });
   } catch (error) {
     console.error("WELCOME CREDIT EMAIL ERROR:", error);
-    // Don't let an email failure block referral tracking.
   }
 }
 
 export const loader = async ({ request }) => {
   console.log("========================================");
   console.log("JOYSHOP REFERRAL TRACK REQUEST");
-  console.log("URL:", request.url);
 
   try {
     const url = new URL(request.url);
-
     const referralCode = url.searchParams.get("ref");
 
-    console.log("Referral Code:", referralCode);
+    // Only the first landing on ?ref= logs a visit. Repeat / polling
+    // calls just try to link, so the visits table stays accurate.
+    const shouldLogVisit = url.searchParams.get("visit") === "1";
+
+    console.log("Referral Code:", referralCode, "| log visit:", shouldLogVisit);
 
     if (!referralCode) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Missing referral code",
-        },
-        400
-      );
+      return jsonResponse({ success: false, error: "Missing referral code" }, 400);
     }
-
-    console.log("Authenticating App Proxy...");
 
     const { admin } = await authenticate.public.appProxy(request);
 
-    const loggedInCustomerId =
-      url.searchParams.get("logged_in_customer_id");
-
-    console.log(
-      "Logged-in Shopify Customer ID:",
-      loggedInCustomerId || "NOT LOGGED IN"
-    );
-
+    const loggedInCustomerId = url.searchParams.get("logged_in_customer_id") || null;
     const shop = url.searchParams.get("shop");
 
-    console.log("Shop:", shop);
+    console.log("Shop:", shop, "| Customer:", loggedInCustomerId || "NOT LOGGED IN");
 
     if (!shop) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Shop not found",
-        },
-        400
-      );
+      return jsonResponse({ success: false, error: "Shop not found" }, 400);
     }
 
-    console.log("Searching for ambassador...");
-
-    const ambassador = await db.ambassador.findFirst({
-      where: {
-        shop,
-        referralCode,
-        status: "ACTIVE",
-      },
-    });
+    const ambassador = await withRetry(() =>
+      db.ambassador.findFirst({
+        where: { shop, referralCode, status: "ACTIVE" },
+      })
+    );
 
     if (!ambassador) {
-      console.log("AMBASSADOR NOT FOUND:", referralCode);
-
+      console.log("AMBASSADOR NOT FOUND / INACTIVE:", referralCode);
       return jsonResponse(
-        {
-          success: false,
-          error: "Invalid referral code",
-          referralCode,
-        },
+        { success: false, error: "Invalid referral code", referralCode },
         404
       );
     }
 
     console.log("AMBASSADOR FOUND:", ambassador.name);
-    console.log("Ambassador ID:", ambassador.id);
 
-    const userAgent = request.headers.get("user-agent") || null;
+    /* ---------- 1. Log the visit (first landing only) ---------- */
 
-    const forwardedFor = request.headers.get("x-forwarded-for");
-    const realIp = request.headers.get("x-real-ip");
+    let visitId = null;
 
-    const ipAddress =
-      forwardedFor?.split(",")[0]?.trim() || realIp || null;
+    if (shouldLogVisit) {
+      const forwardedFor = request.headers.get("x-forwarded-for");
+      const realIp = request.headers.get("x-real-ip");
 
-    const visitorId = crypto.randomUUID();
+      const visit = await withRetry(() =>
+        db.referralVisit.create({
+          data: {
+            shop,
+            referralCode,
+            visitorId: crypto.randomUUID(),
+            ipAddress: forwardedFor?.split(",")[0]?.trim() || realIp || null,
+            userAgent: request.headers.get("user-agent") || null,
+            customerId: loggedInCustomerId,
+            converted: false,
+          },
+        })
+      );
 
-    console.log("Visitor ID:", visitorId);
-    console.log("IP Address:", ipAddress);
-    console.log("User Agent:", userAgent);
+      visitId = visit.id;
+      console.log("REFERRAL VISIT CREATED:", visitId);
+    }
 
-    const visit = await db.referralVisit.create({
-      data: {
-        shop,
-        referralCode,
-        visitorId,
-        ipAddress,
-        userAgent,
-        customerId: loggedInCustomerId || null,
-        converted: false,
-      },
-    });
+    const base = { success: true, tracked: true, referralCode, visitId };
 
-    console.log("REFERRAL VISIT CREATED:", visit.id);
+    /* ---------- 2. Not logged in: nothing to link yet ---------- */
+
+    if (!loggedInCustomerId) {
+      console.log("Visitor not logged in — visit only.");
+      console.log("========================================");
+      return jsonResponse({ ...base, customerId: null, referralId: null });
+    }
+
+    /* ---------- 3. Self-referral ---------- */
+
+    if (String(ambassador.customerId).split("/").pop() === loggedInCustomerId) {
+      console.log("Ambassador used their own link — ignored.");
+      console.log("========================================");
+      return jsonResponse({
+        ...base,
+        customerId: loggedInCustomerId,
+        referralId: null,
+        skippedReason: "self_referral",
+      });
+    }
+
+    /* ---------- 4. Already referred? ---------- */
+
+    const existingReferral = await withRetry(() =>
+      db.referral.findFirst({
+        where: { shop, referredCustomerId: loggedInCustomerId },
+      })
+    );
+
+    if (existingReferral) {
+      console.log("Referral already exists:", existingReferral.id);
+      console.log("========================================");
+      return jsonResponse({
+        ...base,
+        customerId: loggedInCustomerId,
+        referralId: existingReferral.id,
+        isNewReferral: false,
+      });
+    }
+
+    /* ---------- 5. Is this a genuinely new customer? ---------- */
+
+    const newAccountRecord = await withRetry(() =>
+      db.newCustomerAccount.findFirst({
+        where: { shop, customerId: loggedInCustomerId },
+      })
+    );
+
+    let customer = null;
+
+    try {
+      customer = admin ? await fetchCustomer(admin, loggedInCustomerId) : null;
+    } catch (lookupError) {
+      console.error("Customer lookup failed:", lookupError);
+    }
+
+    const createdAt = customer?.createdAt ? new Date(customer.createdAt).getTime() : null;
+    const orderCount = Number(customer?.numberOfOrders || 0);
+
+    const createdRecently =
+      createdAt !== null && Date.now() - createdAt <= NEW_CUSTOMER_WINDOW_MS;
+
+    const isGenuinelyNewCustomer =
+      Boolean(newAccountRecord) || (createdRecently && orderCount === 0);
+
+    console.log(
+      "New-customer check → webhook record:",
+      Boolean(newAccountRecord),
+      "| created recently:",
+      createdRecently,
+      "| orders:",
+      orderCount
+    );
+
+    // We couldn't verify either way (no webhook record AND Shopify
+    // lookup failed). Tell the browser to try again later instead of
+    // wrongly treating them as an existing customer forever.
+    if (!newAccountRecord && !customer) {
+      console.log("Could not verify customer — asking browser to retry.");
+      console.log("========================================");
+      return jsonResponse(
+        { success: false, retry: true, error: "Could not verify customer yet" },
+        503
+      );
+    }
+
+    if (!isGenuinelyNewCustomer) {
+      console.log("Existing customer — no referral, tag or welcome credit.");
+      console.log("========================================");
+      return jsonResponse({
+        ...base,
+        customerId: loggedInCustomerId,
+        referralId: null,
+        skippedReason: "existing_customer",
+      });
+    }
+
+    /* ---------- 6. Create the referral ---------- */
+
+    const referredName =
+      [customer?.firstName, customer?.lastName].filter(Boolean).join(" ").trim() || null;
+    const referredEmail = customer?.email || null;
+    const referredPhone = customer?.phone || null;
 
     let referral = null;
+    let created = false;
 
-    if (loggedInCustomerId) {
-      console.log("Customer is logged in. Checking referral...");
+    try {
+      referral = await withRetry(() =>
+        db.referral.create({
+          data: {
+            shop,
+            ambassadorId: ambassador.id,
+            referredCustomerId: loggedInCustomerId,
+            referredName,
+            referredEmail,
+            referredPhone,
+            status: "ACTIVE",
+          },
+        })
+      );
+      created = true;
+      console.log("REFERRAL CREATED:", referral.id);
+    } catch (createError) {
+      // Two tabs / calls raced each other — the other one won.
+      if (createError?.code === "P2002") {
+        referral = await db.referral.findFirst({
+          where: { shop, referredCustomerId: loggedInCustomerId },
+        });
+        console.log("Referral was created by a parallel request:", referral?.id);
+      } else {
+        throw createError;
+      }
+    }
 
-      referral = await db.referral.findFirst({
-        where: {
-          shop,
-          referredCustomerId: loggedInCustomerId,
-        },
-      });
+    /* ---------- 7. Welcome benefit (only for the call that created it) ---------- */
 
-      if (!referral) {
-        console.log(
-          "No existing referral for this customer. Checking if they are a genuinely new signup..."
-        );
-
-        let referredName = null;
-        let referredEmail = null;
-
-        /*
-         * Definitive check: was this exact customerId recorded
-         * by our customers/create webhook? If Shopify never
-         * fired that webhook for them, they already had an
-         * account before clicking this referral link.
-         */
-        const newAccountRecord = await withRetry(() =>
-          db.newCustomerAccount.findFirst({
-            where: {
-              shop,
-              customerId: loggedInCustomerId,
-            },
-          })
-        );
-
-        const isGenuinelyNewCustomer = Boolean(newAccountRecord);
-
-        console.log(
-          "customers/create webhook record found:",
-          isGenuinelyNewCustomer
-        );
-
-        if (!isGenuinelyNewCustomer) {
-          console.log(
-            "Customer already had an account before this click — skipping referral creation, tagging, and welcome credit."
-          );
-
-          console.log("========================================");
-
-          return jsonResponse({
-            success: true,
-            tracked: true,
-            referralCode,
-            visitId: visit.id,
-            customerId: loggedInCustomerId,
-            referralId: null,
-            skippedReason: "existing_customer",
-          });
-        }
-
-        let referredPhone = null;
-
+    if (created) {
+      if (admin) {
         try {
-          const customerResponse = await admin.graphql(
-            `#graphql
-            query GetCustomer($id: ID!) {
-              customer(id: $id) {
-                email
-                firstName
-                lastName
-                phone
-              }
-            }`,
-            {
-              variables: {
-                id: customerGid(loggedInCustomerId),
-              },
-            }
-          );
-
-          const customerResult = await customerResponse.json();
-          const customer = customerResult?.data?.customer;
-
-          if (customer) {
-            referredName =
-              [customer.firstName, customer.lastName]
-                .filter(Boolean)
-                .join(" ")
-                .trim() || null;
-
-            referredEmail = customer.email || null;
-            referredPhone = customer.phone || null;
-          }
-        } catch (nameError) {
-          console.error(
-            "Failed to fetch customer name for referral:",
-            nameError
-          );
-          // Fall back to null name/email/phone — not a fatal
-          // error, we already confirmed they're a genuine new
-          // signup.
+          await tagCustomerAsReferred(admin, loggedInCustomerId);
+          console.log("Customer tagged as referred:", loggedInCustomerId);
+        } catch (tagError) {
+          console.error("CUSTOMER TAGGING ERROR:", tagError);
         }
+      }
 
-        console.log(
-          "Creating referral for Shopify customer:",
-          loggedInCustomerId
-        );
+      try {
+        const settings = await db.referralSettings.findUnique({ where: { shop } });
 
-        referral = await withRetry(() =>
-          db.referral.create({
+        const creditEnabled = settings?.firstOrderCreditEnabled ?? true;
+        const creditAmount = Number(settings?.firstOrderCredit ?? 200);
+
+        if (creditEnabled) {
+          await db.referralCredit.create({
             data: {
               shop,
-              ambassadorId: ambassador.id,
-              referredCustomerId: loggedInCustomerId,
-              referredName,
-              referredEmail,
-              referredPhone,
-              status: "ACTIVE",
+              customerId: loggedInCustomerId,
+              referralId: referral.id,
+              amount: creditAmount,
+              discountCode: WELCOME_DISCOUNT_CODE,
+              status: "ISSUED",
+              expiresAt: settings?.creditExpiryDays
+                ? new Date(Date.now() + settings.creditExpiryDays * 24 * 60 * 60 * 1000)
+                : null,
             },
-          })
-        );
-
-        console.log("REFERRAL CREATED:", referral.id);
-
-        /*
-         * =====================================================
-         * TAG CUSTOMER + SEND WELCOME CODE
-         *
-         * Instead of creating a unique discount code per
-         * referral (limited to 25 total codes on some plans),
-         * we tag the customer so they match the Customer
-         * Segment your ONE shared "WELCOME200" discount code
-         * is scoped to in Shopify Admin.
-         * =====================================================
-         */
-
-        /*
-         * Tag the customer so they match the Customer Segment
-         * your shared discount code (WELCOME200) is scoped to.
-         * This must run unconditionally for every genuine new
-         * referral — it's what makes the discount actually work
-         * at checkout, independent of the legacy "first order
-         * credit" setting below.
-         */
-
-        if (admin) {
-          try {
-            await tagCustomerAsReferred(admin, loggedInCustomerId);
-
-            console.log(
-              "Customer tagged as referred:",
-              loggedInCustomerId
-            );
-          } catch (tagError) {
-            console.error("CUSTOMER TAGGING ERROR:");
-            console.error(tagError);
-            // Don't let a tagging failure block referral tracking.
-          }
-        }
-
-        try {
-          const settings = await db.referralSettings.findUnique({
-            where: { shop },
           });
 
-          const creditEnabled =
-            settings?.firstOrderCreditEnabled ?? true;
-
-          const creditAmount = Number(
-            settings?.firstOrderCredit ?? 200
-          );
-
-          if (creditEnabled && admin) {
-            await db.referralCredit.create({
-              data: {
-                shop,
-                customerId: loggedInCustomerId,
-                referralId: referral.id,
-                amount: creditAmount,
-                discountCode: WELCOME_DISCOUNT_CODE,
-                status: "ISSUED",
-                expiresAt: settings?.creditExpiryDays
-                  ? new Date(
-                      Date.now() +
-                        settings.creditExpiryDays *
-                          24 *
-                          60 *
-                          60 *
-                          1000
-                    )
-                  : null,
-              },
-            });
-
-            if (referredEmail) {
-              await sendWelcomeCreditEmail(
-                referredEmail,
-                referredName,
-                creditAmount,
-                MINIMUM_ORDER_VALUE
-              );
-            }
+          if (referredEmail) {
+            await sendWelcomeCreditEmail(
+              referredEmail,
+              customer?.firstName,
+              creditAmount,
+              MINIMUM_ORDER_VALUE
+            );
           }
-        } catch (creditError) {
-          /*
-           * A tagging/email failure should NOT stop referral
-           * tracking from succeeding.
-           */
-          console.error("WELCOME CREDIT TAGGING ERROR:");
-          console.error(creditError);
         }
-      } else {
-        console.log("Referral already exists:", referral.id);
+      } catch (creditError) {
+        console.error("WELCOME CREDIT ERROR:", creditError);
       }
     }
 
     console.log("========================================");
 
     return jsonResponse({
-      success: true,
-      tracked: true,
-      referralCode,
-      visitId: visit.id,
-      customerId: loggedInCustomerId || null,
+      ...base,
+      customerId: loggedInCustomerId,
       referralId: referral?.id || null,
+      isNewReferral: created,
     });
   } catch (error) {
     console.error("========================================");
     console.error("REFERRAL TRACKING ERROR");
-    console.error("========================================");
     console.error(error);
-    console.error(
-      "Error message:",
-      error instanceof Error ? error.message : String(error)
-    );
     console.error("========================================");
 
     return jsonResponse(
       {
         success: false,
+        retry: true,
         error: "Internal server error",
-        message:
-          error instanceof Error ? error.message : String(error),
+        message: error instanceof Error ? error.message : String(error),
       },
       500
     );

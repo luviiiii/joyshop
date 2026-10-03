@@ -1,98 +1,78 @@
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
-function customerGid(customerId) {
-  if (!customerId) {
-    return null;
-  }
+const WELCOME_DISCOUNT_CODE = "WELCOME200";
 
-  const value = String(customerId);
+/* =========================================================
+   HELPERS
+========================================================= */
 
-  if (value.startsWith("gid://shopify/Customer/")) {
-    return value;
-  }
-
-  return `gid://shopify/Customer/${value}`;
+/*
+ * Commission slabs (flat rate on the whole monthly total):
+ *   Up to ₹30,000      -> 7%
+ *   ₹30,001 - ₹60,000  -> 10%
+ *   Above ₹60,000      -> 15%
+ */
+function getSlabRate(monthlyTotal) {
+  if (monthlyTotal <= 30000) return 7;
+  if (monthlyTotal <= 60000) return 10;
+  return 15;
 }
 
-export const action = async ({ request }) => {
-  try {
-    const {
-      shop,
-      topic,
-      payload,
-      admin,
-      session,
-    } = await authenticate.webhook(request);
+/*
+ * Calendar month in INDIA time (IST, UTC+5:30), returned as UTC
+ * instants. The server runs in UTC, so plain `new Date(y, m, 1)`
+ * would start the month at 5:30 AM IST and put early-morning
+ * orders on the 1st into the previous month's slab.
+ */
+const IST_OFFSET_MS = 330 * 60 * 1000;
 
+function istMonthRange(date = new Date()) {
+  const ist = new Date(date.getTime() + IST_OFFSET_MS);
+  const year = ist.getUTCFullYear();
+  const month = ist.getUTCMonth();
+
+  return {
+    start: new Date(Date.UTC(year, month, 1) - IST_OFFSET_MS),
+    end: new Date(Date.UTC(year, month + 1, 1) - IST_OFFSET_MS),
+  };
+}
+
+/* =========================================================
+   WEBHOOK
+========================================================= */
+
+export const action = async ({ request }) => {
+  // Authentication errors must surface as Shopify expects (401).
+  const { shop, topic, payload, session } = await authenticate.webhook(request);
+
+  try {
     console.log("========================================");
     console.log("JOYSHOP ORDER WEBHOOK");
-    console.log("Topic:", topic);
-    console.log("Shop:", shop);
+    console.log("Topic:", topic, "| Shop:", shop);
 
     if (!session) {
       console.log("No Shopify session available.");
-      console.log("========================================");
+      return new Response();
+    }
 
+    if (topic !== "ORDERS_PAID") {
+      console.log("Ignoring webhook topic:", topic);
       return new Response();
     }
 
     const order = payload;
 
-    console.log("Order ID:", order.id);
-    console.log("Order Name:", order.name);
-    console.log(
-      "Financial Status:",
-      order.financial_status
-    );
+    const customerId = order.customer?.id ? String(order.customer.id) : null;
+    const orderId = order.id ? String(order.id) : null;
 
     /*
-     * Only process paid orders
+     * Two DIFFERENT amounts:
+     * - eligibilityOrderAmount: pre-discount subtotal, ONLY for the
+     *   ambassador-eligibility check.
+     * - commissionOrderAmount: what the customer actually paid, for
+     *   slab totals and commission.
      */
-
-    if (topic !== "ORDERS_PAID") {
-      console.log(
-        "Ignoring webhook topic:",
-        topic
-      );
-
-      return new Response();
-    }
-
-    /*
-     * Shopify customer ID
-     */
-
-    const customerId = order.customer?.id
-      ? String(order.customer.id)
-      : null;
-
-    /*
-     * Shopify order ID
-     */
-
-    const orderId = order.id
-      ? String(order.id)
-      : null;
-
-    /*
-     * Order amount
-     *
-     * IMPORTANT:
-     * Two DIFFERENT amounts are used here, for two different
-     * purposes:
-     *
-     * - eligibilityOrderAmount: the pre-discount, full-rate
-     *   subtotal (total_line_items_price). Used ONLY to check
-     *   whether this order makes the customer eligible to
-     *   become an ambassador.
-     *
-     * - commissionOrderAmount: what the customer actually paid
-     *   (current_total_price, after discounts). Used ONLY for
-     *   commission calculations — the ambassador's monthly
-     *   slab totals and this order's commission amount.
-     */
-
     const eligibilityOrderAmount = Number(
       order.total_line_items_price ||
         order.subtotal_price ||
@@ -102,163 +82,50 @@ export const action = async ({ request }) => {
     );
 
     const commissionOrderAmount = Number(
-      order.current_total_price ||
-        order.total_price ||
-        0
+      order.current_total_price || order.total_price || 0
     );
 
-    console.log(
-      "Customer ID:",
-      customerId
-    );
-
-    console.log(
-      "Order ID:",
-      orderId
-    );
-
-    console.log(
-      "Eligibility amount (pre-discount subtotal):",
-      eligibilityOrderAmount
-    );
-
-    console.log(
-      "Commission amount (actual amount paid):",
-      commissionOrderAmount
-    );
+    console.log("Order:", order.name, "| ID:", orderId, "| Customer:", customerId);
+    console.log("Eligibility amount:", eligibilityOrderAmount, "| Commission amount:", commissionOrderAmount);
 
     if (!orderId) {
-      console.log(
-        "Missing order ID"
-      );
-
+      console.log("Missing order ID");
       return new Response();
     }
 
-    /*
-     * =====================================================
-     * 1. AMBASSADOR ELIGIBILITY
-     *
-     * Eligibility rule: a SINGLE order of ₹10,000 or more
-     * qualifies a customer to become an ambassador. This is
-     * checked against eligibilityOrderAmount (the pre-discount
-     * subtotal of this order), NOT the customer's cumulative
-     * lifetime spend, and NOT what they actually paid after
-     * any discount.
-     * =====================================================
-     */
+    /* =====================================================
+       1. AMBASSADOR ELIGIBILITY (single order >= threshold)
+    ===================================================== */
 
     if (customerId) {
       try {
-        /*
-         * Load referral settings
-         */
-
-        let settings =
-          await db.referralSettings.findUnique({
-            where: {
-              shop,
-            },
-          });
-
-        /*
-         * Create default settings if missing
-         */
+        let settings = await db.referralSettings.findUnique({ where: { shop } });
 
         if (!settings) {
-          settings =
-            await db.referralSettings.create({
-              data: {
-                shop,
-              },
-            });
+          settings = await db.referralSettings.create({ data: { shop } });
         }
 
-        const eligibilityAmount =
-          Number(
-            settings.ambassadorEligibilityAmount
-          );
+        const eligibilityAmount = Number(settings.ambassadorEligibilityAmount);
 
-        console.log(
-          "This order's amount:",
-          eligibilityOrderAmount
-        );
+        const existingAmbassador = await db.ambassador.findFirst({
+          where: { shop, customerId },
+        });
 
-        console.log(
-          "Ambassador eligibility threshold:",
-          eligibilityAmount
-        );
+        const isEligible = eligibilityOrderAmount >= eligibilityAmount;
 
-        /*
-         * Check if customer is already ambassador
-         */
+        const existingEligibility = await db.ambassadorEligibility.findUnique({
+          where: { shop_customerId: { shop, customerId } },
+        });
 
-        const existingAmbassador =
-          await db.ambassador.findFirst({
-            where: {
-              shop,
-              customerId,
-            },
-          });
-
-        /*
-         * Determine eligibility based on THIS order alone.
-         */
-
-        const isEligible =
-          eligibilityOrderAmount >= eligibilityAmount;
-
-        /*
-         * Get existing eligibility record
-         */
-
-        const existingEligibility =
-          await db.ambassadorEligibility.findUnique({
-            where: {
-              shop_customerId: {
-                shop,
-                customerId,
-              },
-            },
-          });
-
-        /*
-         * Customer's order qualifies them
-         */
-
-        if (
-          isEligible &&
-          !existingAmbassador
-        ) {
+        if (isEligible && !existingAmbassador) {
           await db.ambassadorEligibility.upsert({
-            where: {
-              shop_customerId: {
-                shop,
-                customerId,
-              },
-            },
-
+            where: { shop_customerId: { shop, customerId } },
             update: {
               eligible: true,
               totalSpent: eligibilityOrderAmount,
-
-              /*
-               * Once eligible, stay eligible (until they
-               * join) — don't reset eligibleAt if they were
-               * already eligible from a previous order.
-               */
-              eligibleAt:
-                existingEligibility?.eligibleAt ||
-                new Date(),
-
-              /*
-               * A new qualifying order should trigger a
-               * fresh popup even if we'd already notified
-               * them once and they dismissed it.
-               */
+              eligibleAt: existingEligibility?.eligibleAt || new Date(),
               notifiedAt: null,
             },
-
             create: {
               shop,
               customerId,
@@ -268,45 +135,13 @@ export const action = async ({ request }) => {
             },
           });
 
-          console.log(
-            "🎉 CUSTOMER IS NOW ELIGIBLE (single order threshold met)"
-          );
-
-          console.log(
-            "Customer ID:",
-            customerId
-          );
-
-          console.log(
-            "Qualifying order amount:",
-            eligibilityOrderAmount
-          );
+          console.log("🎉 CUSTOMER IS NOW ELIGIBLE:", customerId);
         } else if (!existingAmbassador) {
-          /*
-           * Order didn't meet the threshold — keep the
-           * existing eligibility record's state as-is, or
-           * create a tracking record at eligible: false.
-           * We do NOT accumulate totalSpent across orders
-           * here, since eligibility is single-order based.
-           */
-
           await db.ambassadorEligibility.upsert({
-            where: {
-              shop_customerId: {
-                shop,
-                customerId,
-              },
-            },
-
+            where: { shop_customerId: { shop, customerId } },
             update: {
-              /*
-               * Preserve eligible: true if they already
-               * qualified from an earlier order.
-               */
-              eligible:
-                existingEligibility?.eligible || false,
+              eligible: existingEligibility?.eligible || false,
             },
-
             create: {
               shop,
               customerId,
@@ -317,410 +152,204 @@ export const action = async ({ request }) => {
           });
         }
       } catch (eligibilityError) {
-        /*
-         * Eligibility failure should NOT stop
-         * commission processing.
-         */
-
-        console.error(
-          "AMBASSADOR ELIGIBILITY ERROR"
-        );
-
-        console.error(
-          eligibilityError
-        );
+        // Eligibility must not block commission processing.
+        console.error("AMBASSADOR ELIGIBILITY ERROR:", eligibilityError);
       }
     }
 
-    /*
-     * =====================================================
-     * 2. PREVENT DUPLICATE COMMISSION
-     * =====================================================
-     */
+    /* =====================================================
+       2. MARK THE WELCOME CREDIT AS USED
+    ===================================================== */
 
-    const existingCommission =
-      await db.commission.findUnique({
-        where: {
-          shop_orderId: {
-            shop,
-            orderId,
-          },
-        },
-      });
+    if (customerId) {
+      try {
+        const usedWelcomeCode = (order.discount_codes || []).some(
+          (discount) =>
+            String(discount?.code || "").toUpperCase() === WELCOME_DISCOUNT_CODE
+        );
+
+        if (usedWelcomeCode) {
+          const updated = await db.referralCredit.updateMany({
+            where: { shop, customerId, status: { in: ["ISSUED", "AVAILABLE"] } },
+            data: { status: "USED", orderId, usedAt: new Date() },
+          });
+
+          console.log("Welcome credit marked used:", updated.count);
+        }
+      } catch (creditError) {
+        console.error("WELCOME CREDIT UPDATE ERROR:", creditError);
+      }
+    }
+
+    /* =====================================================
+       3. DUPLICATE PROTECTION
+    ===================================================== */
+
+    const existingCommission = await db.commission.findUnique({
+      where: { shop_orderId: { shop, orderId } },
+    });
 
     if (existingCommission) {
-      console.log(
-        "Commission already exists:",
-        existingCommission.id
-      );
-
+      console.log("Commission already exists:", existingCommission.id);
       return new Response();
     }
 
-    /*
-     * =====================================================
-     * 3. FIND REFERRAL BY CUSTOMER
-     * =====================================================
-     */
+    /* =====================================================
+       4. FIND THE REFERRAL (by customer only)
 
-    let referral = null;
+       The old "joyshop_referral" note-attribute fallback picked ANY
+       referral of that ambassador — i.e. another customer's row —
+       so it has been removed. Referrals are linked by customer ID.
+    ===================================================== */
 
-    if (customerId) {
-      referral =
-        await db.referral.findFirst({
-          where: {
-            shop,
-            referredCustomerId: customerId,
-            status: "ACTIVE",
-          },
-
-          include: {
-            ambassador: true,
-          },
-        });
+    if (!customerId) {
+      console.log("Guest order (no customer) — no referral possible.");
+      return new Response();
     }
 
-    /*
-     * =====================================================
-     * 4. FALLBACK TO REFERRAL CODE
-     * =====================================================
-     */
-
-    if (
-      !referral &&
-      Array.isArray(order.note_attributes)
-    ) {
-      const referralAttribute =
-        order.note_attributes.find(
-          (attribute) =>
-            attribute.name ===
-            "joyshop_referral"
-        );
-
-      if (referralAttribute?.value) {
-        referral =
-          await db.referral.findFirst({
-            where: {
-              shop,
-
-              ambassador: {
-                referralCode:
-                  referralAttribute.value,
-              },
-
-              status: "ACTIVE",
-            },
-
-            include: {
-              ambassador: true,
-            },
-          });
-      }
-    }
-
-    /*
-     * =====================================================
-     * 5. NO REFERRAL
-     * =====================================================
-     */
+    const referral = await db.referral.findFirst({
+      where: { shop, referredCustomerId: customerId, status: "ACTIVE" },
+      include: { ambassador: true },
+    });
 
     if (!referral) {
-      console.log(
-        "No referral found for this order."
-      );
-
-      console.log(
-        "========================================"
-      );
-
+      console.log("No referral found for this order.");
       return new Response();
     }
 
-    const ambassador =
-      referral.ambassador;
+    const ambassador = referral.ambassador;
 
-    console.log(
-      "Referral found:",
-      referral.id
-    );
-
-    console.log(
-      "Ambassador:",
-      ambassador.name
-    );
-
-    /*
-     * =====================================================
-     * 6. DETERMINE COMMISSION SLAB RATE
-     *
-     * Commission is no longer a flat per-order rate. Instead,
-     * it's based on the ambassador's TOTAL referred sales for
-     * the current calendar month:
-     *
-     *   Up to ₹30,000        -> 7%
-     *   ₹30,001 - ₹60,000    -> 10%
-     *   Above ₹60,001        -> 15%
-     *
-     * The rate is a FLAT rate applied to the entire monthly
-     * total (not marginal/bracketed) — e.g. ₹50,000 total in a
-     * month pays 10% on the full ₹50,000, not 7% on the first
-     * 30k and 10% on the remaining 20k.
-     *
-     * This recalculates live as each new order comes in: once
-     * the monthly total crosses into a new slab, all of that
-     * ambassador's still-PENDING commissions for the current
-     * month are updated to the new rate. Commissions already
-     * APPROVED or PAID are left untouched, since those have
-     * already been reviewed/paid out and shouldn't silently
-     * change.
-     * =====================================================
-     */
-
-    function getSlabRate(monthlyTotal) {
-      if (monthlyTotal <= 30000) return 7;
-      if (monthlyTotal <= 60000) return 10;
-      return 15;
+    if (ambassador.status !== "ACTIVE") {
+      console.log("Ambassador is not active — no commission:", ambassador.id, ambassador.status);
+      return new Response();
     }
 
-    const now = new Date();
-    const monthStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1,
-      0,
-      0,
-      0,
-      0
-    );
-    const monthEnd = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      1,
-      0,
-      0,
-      0,
-      0
-    );
+    console.log("Referral:", referral.id, "| Ambassador:", ambassador.name);
 
-    console.log(
-      "Calculating monthly commission slab for period:",
-      monthStart.toISOString(),
-      "to",
-      monthEnd.toISOString()
-    );
+    /* =====================================================
+       5. CREATE COMMISSION + APPLY MONTHLY SLAB (atomic)
 
-    /*
-     * =====================================================
-     * 7. CREATE THIS ORDER'S COMMISSION ROW (placeholder rate)
-     *
-     * Created first so it's included in the monthly total
-     * calculated just below. Its rate/amount get corrected in
-     * the recalculation step that follows.
-     * =====================================================
-     */
+       Everything below happens in ONE transaction. If anything
+       fails, nothing is saved and we return 500 so Shopify
+       retries — no more half-saved commissions stuck at 0%.
+    ===================================================== */
 
-    const commission = await db.commission.create({
-      data: {
-        shop,
-        ambassadorId: ambassador.id,
-        referralId: referral.id,
-        customerId: customerId || referral.referredCustomerId,
-        orderId,
-        orderAmount: commissionOrderAmount,
-        commissionRate: 0,
-        commissionAmount: 0,
-        status: "PENDING",
-      },
-    });
+    const { start: monthStart, end: monthEnd } = istMonthRange(new Date());
 
-    /*
-     * =====================================================
-     * 8. RECALCULATE MONTHLY TOTAL AND APPLY CORRECT SLAB
-     * =====================================================
-     */
+    let result;
 
-    const monthlyCommissions = await db.commission.findMany({
-      where: {
-        shop,
-        ambassadorId: ambassador.id,
-        status: { not: "REJECTED" },
-        createdAt: {
-          gte: monthStart,
-          lt: monthEnd,
-        },
-      },
-    });
-
-    const monthlyTotal = monthlyCommissions.reduce(
-      (sum, item) => sum + Number(item.orderAmount || 0),
-      0
-    );
-
-    const commissionRate = getSlabRate(monthlyTotal);
-
-    console.log(
-      "Ambassador monthly referred sales total:",
-      monthlyTotal,
-      "| Slab rate:",
-      commissionRate + "%"
-    );
-
-    /*
-     * Update every still-PENDING commission for this ambassador
-     * in the current month to the new rate — including the one
-     * we just created above.
-     */
-    const pendingThisMonth = monthlyCommissions.filter(
-      (item) => item.status === "PENDING"
-    );
-
-    for (const item of pendingThisMonth) {
-      const oldAmount = Number(item.commissionAmount || 0);
-
-      const recalculatedAmount =
-        (Number(item.orderAmount || 0) * commissionRate) / 100;
-
-      await db.commission.update({
-        where: { id: item.id },
-        data: {
-          commissionRate,
-          commissionAmount: recalculatedAmount,
-        },
-      });
-
-      /*
-       * This order's own new commission is handled by the
-       * totalEarnings increment further below — skip it here to
-       * avoid double-counting. For every OTHER pending
-       * commission whose amount just changed due to the slab
-       * recalculation, adjust the ambassador's stored
-       * totalEarnings by the difference so it stays accurate.
-       */
-      if (item.id !== commission.id) {
-        const delta = recalculatedAmount - oldAmount;
-
-        if (delta !== 0) {
-          await db.ambassador.update({
-            where: { id: ambassador.id },
+    try {
+      result = await db.$transaction(
+        async (tx) => {
+          const commission = await tx.commission.create({
             data: {
-              totalEarnings: {
-                increment: delta,
-              },
+              shop,
+              ambassadorId: ambassador.id,
+              referralId: referral.id,
+              customerId,
+              orderId,
+              orderAmount: commissionOrderAmount,
+              commissionRate: 0,
+              commissionAmount: 0,
+              status: "PENDING",
             },
           });
-        }
+
+          const monthlyCommissions = await tx.commission.findMany({
+            where: {
+              shop,
+              ambassadorId: ambassador.id,
+              status: { not: "REJECTED" },
+              createdAt: { gte: monthStart, lt: monthEnd },
+            },
+          });
+
+          const monthlyTotal = monthlyCommissions.reduce(
+            (sum, item) => sum + Number(item.orderAmount || 0),
+            0
+          );
+
+          const commissionRate = getSlabRate(monthlyTotal);
+
+          let otherPendingDelta = 0;
+
+          for (const item of monthlyCommissions) {
+            if (item.status !== "PENDING") continue;
+
+            const recalculated = (Number(item.orderAmount || 0) * commissionRate) / 100;
+
+            await tx.commission.update({
+              where: { id: item.id },
+              data: { commissionRate, commissionAmount: recalculated },
+            });
+
+            if (item.id !== commission.id) {
+              otherPendingDelta += recalculated - Number(item.commissionAmount || 0);
+            }
+          }
+
+          const commissionAmount = (commissionOrderAmount * commissionRate) / 100;
+
+          await tx.ambassador.update({
+            where: { id: ambassador.id },
+            data: {
+              totalOrders: { increment: 1 },
+              totalEarnings: { increment: commissionAmount + otherPendingDelta },
+            },
+          });
+
+          return { commission, commissionRate, commissionAmount, monthlyTotal };
+        },
+        { timeout: 20000 }
+      );
+    } catch (txError) {
+      // A parallel delivery of the same webhook already saved it.
+      if (txError?.code === "P2002") {
+        console.log("Commission was created by a parallel delivery — done.");
+        return new Response();
       }
+      throw txError;
     }
 
-    const commissionAmount =
-      (commissionOrderAmount * commissionRate) / 100;
-
     console.log(
-      "This order's commission:",
-      commissionAmount,
-      "at",
-      commissionRate + "%"
+      "Monthly total (IST):",
+      result.monthlyTotal,
+      "| Rate:",
+      result.commissionRate + "%",
+      "| This order's commission:",
+      result.commissionAmount,
+      "| Commission ID:",
+      result.commission.id
     );
 
-    /*
-     * =====================================================
-     * 8. UPDATE AMBASSADOR STATISTICS
-     * =====================================================
-     */
+    /* =====================================================
+       6. MARK THIS CUSTOMER'S VISITS CONVERTED (analytics only)
+    ===================================================== */
 
-    await db.ambassador.update({
-      where: {
-        id: ambassador.id,
-      },
-
-      data: {
-        totalOrders: {
-          increment: 1,
-        },
-
-        totalEarnings: {
-          increment:
-            commissionAmount,
-        },
-      },
-    });
-
-    /*
-     * =====================================================
-     * 9. MARK REFERRAL VISIT CONVERTED
-     * =====================================================
-     */
-
-    if (customerId) {
+    try {
       await db.referralVisit.updateMany({
         where: {
           shop,
-
-          referralCode:
-            ambassador.referralCode,
-
+          referralCode: ambassador.referralCode,
           customerId,
-
           converted: false,
         },
-
-        data: {
-          converted: true,
-          convertedAt: new Date(),
-        },
+        data: { converted: true, convertedAt: new Date() },
       });
-    } else {
-      await db.referralVisit.updateMany({
-        where: {
-          shop,
-
-          referralCode:
-            ambassador.referralCode,
-
-          converted: false,
-        },
-
-        data: {
-          converted: true,
-          convertedAt: new Date(),
-        },
-      });
+    } catch (visitError) {
+      console.error("VISIT CONVERSION UPDATE ERROR:", visitError);
     }
 
-    console.log(
-      "Commission created:",
-      commission.id
-    );
-
-    console.log(
-      "Commission amount:",
-      commissionAmount
-    );
-
-    console.log(
-      "========================================"
-    );
-
+    console.log("========================================");
     return new Response();
   } catch (error) {
-    console.error(
-      "========================================"
-    );
-
-    console.error(
-      "JOYSHOP ORDER WEBHOOK ERROR"
-    );
-
+    console.error("========================================");
+    console.error("JOYSHOP ORDER WEBHOOK ERROR — Shopify will retry");
     console.error(error);
+    console.error("========================================");
 
-    console.error(
-      "========================================"
-    );
-
-    /*
-     * Keep returning 200 while developing.
-     */
-
-    return new Response();
+    // 500 makes Shopify retry the webhook. Safe because of the
+    // duplicate check above and the all-or-nothing transaction.
+    return new Response("Webhook processing failed", { status: 500 });
   }
 };
