@@ -58,10 +58,32 @@ const STARTUP_REPORTER = `
 
     if (/[?&]debug=1/.test(location.search)) {
       var box = document.createElement("pre");
-      box.style.cssText = "position:fixed;left:0;right:0;bottom:0;max-height:60vh;overflow:auto;margin:0;padding:12px;background:#3b0a0a;color:#fff;font:11px/1.4 monospace;white-space:pre-wrap;word-break:break-all;z-index:999999";
+      box.style.cssText = "position:fixed;left:0;right:0;bottom:0;max-height:70vh;overflow:auto;margin:0;padding:12px;background:#3b0a0a;color:#fff;font:11px/1.4 monospace;white-space:pre-wrap;word-break:break-all;z-index:999999";
       box.textContent = JSON.stringify(report, null, 2);
       document.body.appendChild(box);
     }
+  }
+
+  function short(url) { return String(url).split("/").pop(); }
+
+  function cssCheck() {
+    var found = "body rule NOT found";
+    try {
+      for (var i = 0; i < document.styleSheets.length; i++) {
+        var rules;
+        try { rules = document.styleSheets[i].cssRules; } catch (e) { continue; }
+        for (var j = 0; rules && j < rules.length; j++) {
+          if (rules[j].selectorText === "body") {
+            found = "body rule found, font-family = " + (rules[j].style.fontFamily || "(empty)");
+          }
+        }
+      }
+    } catch (e) { found = "check failed: " + e.message; }
+    return {
+      stylesheets: document.styleSheets.length,
+      bodyRule: found,
+      bodyFont: getComputedStyle(document.body).fontFamily
+    };
   }
 
   setTimeout(function () {
@@ -69,51 +91,37 @@ const STARTUP_REPORTER = `
 
     var assets = [];
     var nodes = document.querySelectorAll("script[src], link[rel=modulepreload]");
-    for (var i = 0; i < nodes.length && i < 8; i++) assets.push(nodes[i].src || nodes[i].href);
+    for (var i = 0; i < nodes.length; i++) assets.push(nodes[i].src || nodes[i].href);
 
     var report = {
       problem: "Dashboard JavaScript did not start",
       userAgent: navigator.userAgent,
-      url: location.href,
       errors: errors,
-      font: (function () { try { return getComputedStyle(document.body).fontFamily; } catch (e) { return "n/a"; } })(),
-      test: {}
+      css: cssCheck(),
+      files: {}
     };
 
-    // Automatic test: can this device download the app's JS file?
-    var testUrl = assets[0];
-    report.test.file = testUrl || "none";
+    // Try to import EVERY JS file on its own, to find the one that fails
+    var dynImport;
+    try { dynImport = new Function("u", "return import(u)"); } catch (e) { dynImport = null; }
 
-    if (!testUrl || !window.fetch) {
-      report.diagnosis = "Could not run download test";
+    if (!dynImport || !assets.length) {
+      report.files.note = dynImport ? "no JS files found" : "dynamic import not supported";
       send(report);
       return;
     }
 
-    var pending = 2;
-    function done() {
-      pending--;
-      if (pending > 0) return;
-
-      if (report.test.plain === "ok" && report.test.cors === "ok") {
-        report.diagnosis = "FILES OK - the JS downloads fine, so the problem is inside the code";
-      } else if (report.test.plain === "ok") {
-        report.diagnosis = "CORS - the server is not allowing justorganik.com to use the JS files";
-      } else {
-        report.diagnosis = "BLOCKED - this phone/network is blocking joyshop-production.up.railway.app";
-      }
-      send(report);
-    }
-
-    fetch(testUrl, { mode: "cors", cache: "no-store" })
-      .then(function (r) { report.test.cors = r.ok ? "ok" : "HTTP " + r.status; })
-      .catch(function (e) { report.test.cors = "FAILED: " + (e && e.message); })
-      .then(done);
-
-    fetch(testUrl, { mode: "no-cors", cache: "no-store" })
-      .then(function () { report.test.plain = "ok"; })
-      .catch(function (e) { report.test.plain = "FAILED: " + (e && e.message); })
-      .then(done);
+    var pending = assets.length;
+    assets.forEach(function (url) {
+      dynImport(url).then(function () {
+        report.files[short(url)] = "ok";
+      }, function (e) {
+        report.files[short(url)] = "FAILED: " + ((e && (e.name + ": " + e.message)) || e);
+      }).then(function () {
+        pending--;
+        if (pending === 0) send(report);
+      });
+    });
   }, 6000);
 })();
 `;
