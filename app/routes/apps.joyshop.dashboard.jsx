@@ -48,21 +48,7 @@ const STARTUP_REPORTER = `
     push("UNHANDLED: " + ((r && (r.stack || r.message)) || r));
   });
 
-  setTimeout(function () {
-    if (window.__JOYSHOP_STARTED) return;
-
-    var assets = [];
-    var nodes = document.querySelectorAll("script[src], link[rel=modulepreload]");
-    for (var i = 0; i < nodes.length && i < 8; i++) assets.push(nodes[i].src || nodes[i].href);
-
-    var report = {
-      problem: "Dashboard JavaScript did not start",
-      userAgent: navigator.userAgent,
-      url: location.href,
-      errors: errors,
-      assets: assets
-    };
-
+  function send(report) {
     try {
       var xhr = new XMLHttpRequest();
       xhr.open("POST", "/apps/joyshop/client-log", true);
@@ -76,6 +62,58 @@ const STARTUP_REPORTER = `
       box.textContent = JSON.stringify(report, null, 2);
       document.body.appendChild(box);
     }
+  }
+
+  setTimeout(function () {
+    if (window.__JOYSHOP_STARTED) return;
+
+    var assets = [];
+    var nodes = document.querySelectorAll("script[src], link[rel=modulepreload]");
+    for (var i = 0; i < nodes.length && i < 8; i++) assets.push(nodes[i].src || nodes[i].href);
+
+    var report = {
+      problem: "Dashboard JavaScript did not start",
+      userAgent: navigator.userAgent,
+      url: location.href,
+      errors: errors,
+      font: (function () { try { return getComputedStyle(document.body).fontFamily; } catch (e) { return "n/a"; } })(),
+      test: {}
+    };
+
+    // Automatic test: can this device download the app's JS file?
+    var testUrl = assets[0];
+    report.test.file = testUrl || "none";
+
+    if (!testUrl || !window.fetch) {
+      report.diagnosis = "Could not run download test";
+      send(report);
+      return;
+    }
+
+    var pending = 2;
+    function done() {
+      pending--;
+      if (pending > 0) return;
+
+      if (report.test.plain === "ok" && report.test.cors === "ok") {
+        report.diagnosis = "FILES OK - the JS downloads fine, so the problem is inside the code";
+      } else if (report.test.plain === "ok") {
+        report.diagnosis = "CORS - the server is not allowing justorganik.com to use the JS files";
+      } else {
+        report.diagnosis = "BLOCKED - this phone/network is blocking joyshop-production.up.railway.app";
+      }
+      send(report);
+    }
+
+    fetch(testUrl, { mode: "cors", cache: "no-store" })
+      .then(function (r) { report.test.cors = r.ok ? "ok" : "HTTP " + r.status; })
+      .catch(function (e) { report.test.cors = "FAILED: " + (e && e.message); })
+      .then(done);
+
+    fetch(testUrl, { mode: "no-cors", cache: "no-store" })
+      .then(function () { report.test.plain = "ok"; })
+      .catch(function (e) { report.test.plain = "FAILED: " + (e && e.message); })
+      .then(done);
   }, 6000);
 })();
 `;
@@ -1300,17 +1338,6 @@ export default function AmbassadorDashboard() {
                   Keep Referring
                   <span className="hero-button-arrow">→</span>
                 </button>
-              </div>
-
-              <div className="hero-visual">
-                <img
-                  src="https://cdn.shopify.com/extensions/ambassador-hero.jpg"
-                  alt="Just Organik products"
-                  className="hero-image"
-                  onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                  }}
-                />
               </div>
             </div>
           </section>
