@@ -8,6 +8,79 @@ import { useState, useEffect, useRef } from "react";
 import SettingsModal from "../components/SettingsModal";
 
 /* =========================================================
+   FONT — load Inter so iPhone, Android and computers all match
+   (without it each device falls back to its own system font)
+========================================================= */
+
+export const links = () => [
+  { rel: "preconnect", href: "https://fonts.googleapis.com" },
+  { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+  {
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
+  },
+];
+
+/* =========================================================
+   STARTUP ERROR REPORTER
+   Plain old-style JavaScript that runs even if the main app code
+   fails to start (e.g. on an older iPhone). If the dashboard hasn't
+   started after 6 seconds it sends the errors to the Railway logs,
+   and with &debug=1 in the URL it also shows them on screen.
+========================================================= */
+
+const STARTUP_REPORTER = `
+(function () {
+  var errors = [];
+  function push(msg) { if (errors.length < 15) errors.push(String(msg).slice(0, 600)); }
+
+  window.addEventListener("error", function (e) {
+    var t = e && e.target;
+    if (t && t !== window && (t.src || t.href)) {
+      push("FAILED TO LOAD: " + (t.src || t.href));
+    } else {
+      push((e.message || "error") + " @ " + (e.filename || "") + ":" + (e.lineno || "") + ":" + (e.colno || ""));
+    }
+  }, true);
+
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e && e.reason;
+    push("UNHANDLED: " + ((r && (r.stack || r.message)) || r));
+  });
+
+  setTimeout(function () {
+    if (window.__JOYSHOP_STARTED) return;
+
+    var assets = [];
+    var nodes = document.querySelectorAll("script[src], link[rel=modulepreload]");
+    for (var i = 0; i < nodes.length && i < 8; i++) assets.push(nodes[i].src || nodes[i].href);
+
+    var report = {
+      problem: "Dashboard JavaScript did not start",
+      userAgent: navigator.userAgent,
+      url: location.href,
+      errors: errors,
+      assets: assets
+    };
+
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/apps/joyshop/client-log", true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.send(JSON.stringify(report));
+    } catch (err) {}
+
+    if (/[?&]debug=1/.test(location.search)) {
+      var box = document.createElement("pre");
+      box.style.cssText = "position:fixed;left:0;right:0;bottom:0;max-height:60vh;overflow:auto;margin:0;padding:12px;background:#3b0a0a;color:#fff;font:11px/1.4 monospace;white-space:pre-wrap;word-break:break-all;z-index:999999";
+      box.textContent = JSON.stringify(report, null, 2);
+      document.body.appendChild(box);
+    }
+  }, 6000);
+})();
+`;
+
+/* =========================================================
    LOADER
 ========================================================= */
 
@@ -751,6 +824,11 @@ export default function AmbassadorDashboard() {
   const [earningsPeriod, setEarningsPeriod] = useState("thisMonth");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  // Tells the startup reporter the app is running fine.
+  useEffect(() => {
+    window.__JOYSHOP_STARTED = true;
+  }, []);
+
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("joyshop_dashboard_theme");
@@ -1028,6 +1106,7 @@ export default function AmbassadorDashboard() {
 
   return (
     <div className="dashboard" data-theme={darkMode ? "dark" : "light"}>
+      <script dangerouslySetInnerHTML={{ __html: STARTUP_REPORTER }} />
 
       <header className="topbar">
         <div className="topbar-left">
