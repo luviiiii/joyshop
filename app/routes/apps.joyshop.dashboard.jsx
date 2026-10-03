@@ -4,7 +4,7 @@ import {
   useFetcher,
   useLoaderData,
 } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import SettingsModal from "../components/SettingsModal";
 
 /* =========================================================
@@ -855,54 +855,170 @@ export default function AmbassadorDashboard() {
     }
   }
 
-  async function copyText(text, onDone) {
-    if (!text) return;
+  /* ---------- Toast ---------- */
 
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+
+  function showToast(message) {
+    setToast(message);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3500);
+  }
+
+  /* ---------- Copy (works on iPhone too) ---------- */
+
+  // iOS Safari only copies from a VISIBLE, selected element, so the
+  // old "move it off-screen" trick silently failed there.
+  function legacyCopy(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.contentEditable = "true";
+    textarea.style.cssText =
+      "position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:16px;";
+    document.body.appendChild(textarea);
+
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(textarea);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    textarea.setSelectionRange(0, text.length);
+
+    let ok = false;
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "fixed";
-        textarea.style.top = "0";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        textarea.setSelectionRange(0, text.length);
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-      }
-
-      onDone(true);
-      setTimeout(() => onDone(false), 2000);
+      ok = document.execCommand("copy");
     } catch (error) {
-      console.error("Copy failed:", error);
-      onDone(false);
+      ok = false;
     }
+
+    selection.removeAllRanges();
+    document.body.removeChild(textarea);
+    return ok;
+  }
+
+  async function copyText(text, onDone) {
+    if (!text) return false;
+
+    let ok = false;
+
+    // Modern API first (needs HTTPS + a tap, which we have)
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch (error) {
+        ok = false;
+      }
+    }
+
+    if (!ok) ok = legacyCopy(text);
+
+    if (ok) {
+      onDone?.(true);
+      window.setTimeout(() => onDone?.(false), 2000);
+    } else {
+      // Last resort: select the link so they can long-press → Copy
+      const input = document.querySelector(".link-row input");
+      if (input) {
+        input.focus();
+        input.setSelectionRange(0, input.value.length);
+      }
+      showToast("Couldn't copy automatically — press and hold the link to copy it.");
+    }
+
+    return ok;
   }
 
   function copyReferralLink() {
-    copyText(referralLink, setCopied);
+    return copyText(referralLink, setCopied);
   }
 
-  async function shareGeneric() {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: "Just Organik",
-          text: "Check out Just Organik and use my referral link:",
-          url: referralLink,
-        });
-        return;
-      } catch (error) {
-        /* cancelled or unsupported, fall back to copy */
-      }
+  /* ---------- Open Facebook / Instagram APPS on phones ---------- */
+
+  function getMobileOS() {
+    const ua = navigator.userAgent || "";
+    if (/android/i.test(ua)) return "android";
+    if (
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    ) {
+      return "ios";
+    }
+    return null;
+  }
+
+  // Try the app; if it isn't installed (page still visible after a
+  // moment), fall back to the website.
+  function openAppWithFallback(appUrl, webUrl) {
+    let timer = null;
+
+    function cancel() {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", cancel);
     }
 
+    function onVisibility() {
+      if (document.visibilityState === "hidden") cancel();
+    }
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", cancel);
+
+    timer = window.setTimeout(() => {
+      cancel();
+      window.location.href = webUrl;
+    }, 1800);
+
+    window.location.href = appUrl;
+  }
+
+  function shareToFacebook(event) {
+    const os = getMobileOS();
+    if (!os) return; // computer: normal link opens Facebook's share page
+
+    event.preventDefault();
+
+    if (os === "android") {
+      // Opens the Facebook app (falls back to the browser if not installed)
+      window.location.href =
+        "intent://www.facebook.com/sharer/sharer.php?u=" +
+        encodeURIComponent(referralLink) +
+        "#Intent;scheme=https;package=com.facebook.katana;S.browser_fallback_url=" +
+        encodeURIComponent(facebookShareUrl) +
+        ";end";
+      return;
+    }
+
+    // iPhone: open Facebook's share screen inside the Facebook app
+    openAppWithFallback(
+      "fb://facewebmodal/f?href=" + encodeURIComponent(facebookShareUrl),
+      facebookShareUrl
+    );
+  }
+
+  function shareToInstagram(event) {
+    event.preventDefault();
+
+    // Instagram doesn't let websites pre-fill a post, so we copy the
+    // link and open the app — they paste it into a story, DM or bio.
     copyReferralLink();
+    showToast("Link copied! Paste it in your Instagram story, post or DM.");
+
+    const os = getMobileOS();
+
+    if (os === "ios") {
+      openAppWithFallback("instagram://app", "https://www.instagram.com/");
+    } else if (os === "android") {
+      window.location.href =
+        "intent://instagram.com/#Intent;scheme=https;package=com.instagram.android;S.browser_fallback_url=" +
+        encodeURIComponent("https://www.instagram.com/") +
+        ";end";
+    } else {
+      window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+    }
   }
 
   const initials =
@@ -1257,9 +1373,8 @@ export default function AmbassadorDashboard() {
               <div className="share-row">
                 <span>Share via</span>
                 <a href={whatsappShareUrl} target="_blank" rel="noopener noreferrer" className="share-icon whatsapp" aria-label="Share on WhatsApp"><IconWhatsApp /></a>
-                <a href={facebookShareUrl} target="_blank" rel="noopener noreferrer" className="share-icon facebook" aria-label="Share on Facebook"><IconFacebook /></a>
-                <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="share-icon instagram" onClick={copyReferralLink} aria-label="Share on Instagram"><IconInstagram /></a>
-                <button type="button" className="share-icon generic" onClick={shareGeneric} aria-label="More sharing options">⤴</button>
+                <a href={facebookShareUrl} target="_blank" rel="noopener noreferrer" className="share-icon facebook" onClick={shareToFacebook} aria-label="Share on Facebook"><IconFacebook /></a>
+                <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="share-icon instagram" onClick={shareToInstagram} aria-label="Share on Instagram"><IconInstagram /></a>
               </div>
             </div>
           </section>
@@ -1486,8 +1601,8 @@ export default function AmbassadorDashboard() {
 
             <div className="share-row wide">
               <a href={whatsappShareUrl} target="_blank" rel="noopener noreferrer" className="share whatsapp"><IconWhatsApp /> WhatsApp</a>
-              <a href={facebookShareUrl} target="_blank" rel="noopener noreferrer" className="share facebook"><IconFacebook /> Facebook</a>
-              <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="share instagram" onClick={copyReferralLink}><IconInstagram /> Instagram</a>
+              <a href={facebookShareUrl} target="_blank" rel="noopener noreferrer" className="share facebook" onClick={shareToFacebook}><IconFacebook /> Facebook</a>
+              <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="share instagram" onClick={shareToInstagram}><IconInstagram /> Instagram</a>
             </div>
           </section>
 
@@ -1561,6 +1676,12 @@ export default function AmbassadorDashboard() {
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
       />
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
 
       <footer className="footer">
         <div>JUST ORGANIK</div>
@@ -1688,7 +1809,6 @@ svg { width: 100%; height: 100%; }
 .share-icon.whatsapp { background: #25d366; }
 .share-icon.facebook { background: #1877f2; }
 .share-icon.instagram { background: #c1387b; }
-.share-icon.generic { background: #6b7a70; }
 .code-row { display: flex; gap: 8px; margin-bottom: 8px; }
 .code-value { flex: 1; border: 1px solid #e4e9e5; border-radius: 8px; padding: 10px 12px; font-size: 14px; font-weight: 800; letter-spacing: .5px; color: #1f2d22; background: #fbfcfb; }
 .code-hint { margin: 0; font-size: 11.5px; color: #8a948e; }
@@ -1790,6 +1910,10 @@ svg { width: 100%; height: 100%; }
 .small-icon { width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #eaf3de; color: #14532d; display: flex; align-items: center; justify-content: center; padding: 9px; }
 .small-panel h3 { margin: 4px 0; font-size: 14px; }
 .small-panel p { margin: 3px 0; color: #6b7a70; font-size: 11px; overflow-wrap: anywhere; }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 2000; max-width: calc(100% - 32px); background: #14532d; color: #ffffff; padding: 12px 18px; border-radius: 12px; font-size: 13px; font-weight: 600; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.2); animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.dashboard[data-theme="dark"] .toast { background: #2f8f57; }
 
 .footer { background: #ffffff; border-top: 1px solid #eef1ec; padding: 18px; text-align: center; color: #7b857f; font-size: 10px; }
 .footer div { color: #14532d; font-weight: 800; letter-spacing: 1px; margin-bottom: 4px; }
