@@ -152,6 +152,13 @@
    * logged-in customer. Anonymous responses (customerId: null)
    * and errors are NOT treated as linked, so we keep trying.
    */
+  /*
+   * If we're about to redirect after login, don't open the popup on
+   * THIS page (it would flash and vanish). The flag in sessionStorage
+   * makes it open on the page we land on instead.
+   */
+  let announceWelcome = true;
+
   function handleLinkResult(code, data) {
     if (!data || !data.success || !data.customerId) return false;
 
@@ -159,7 +166,10 @@
 
     if (data.isNewReferral) {
       safeSet(sessionStorage, WELCOME_KEY, code);
-      window.dispatchEvent(new CustomEvent(WELCOME_EVENT, { detail: { code: code } }));
+
+      if (announceWelcome) {
+        window.dispatchEvent(new CustomEvent(WELCOME_EVENT, { detail: { code: code } }));
+      }
     }
 
     return true;
@@ -177,14 +187,22 @@
 
   async function run() {
     if (isLoggedIn) {
+      const pendingRedirect = safeGet(sessionStorage, POST_LOGIN_REDIRECT_KEY);
+
+      // Only navigate if we're not ALREADY on that page — redirecting
+      // "/" to "/" is just a pointless reload.
+      const willRedirect =
+        Boolean(pendingRedirect) && pendingRedirect !== window.location.pathname;
+
+      announceWelcome = !willRedirect;
+
       // Link first, THEN navigate, so the redirect can't cancel the request.
       await handleReferral();
 
-      const pendingRedirect = safeGet(sessionStorage, POST_LOGIN_REDIRECT_KEY);
       safeRemove(sessionStorage, FORCED_REFERRAL_LOGIN_KEY);
+      safeRemove(sessionStorage, POST_LOGIN_REDIRECT_KEY);
 
-      if (pendingRedirect) {
-        safeRemove(sessionStorage, POST_LOGIN_REDIRECT_KEY);
+      if (willRedirect) {
         window.location.replace(pendingRedirect);
       }
       return;
