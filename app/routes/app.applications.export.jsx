@@ -269,6 +269,8 @@ export const loader = async ({ request }) => {
       "Status",
       "PAN Number",
       "Aadhaar Number",
+      "Account Number",
+      "IFSC Code",
       "Referral Code",
       "Reviewed On",
       "Review Notes",
@@ -325,6 +327,10 @@ export const loader = async ({ request }) => {
       app.status,
       app.panNumber || "",
       asText(app.aadhaarNumber),
+      // Filled automatically once the KYC form collects these fields
+      // (bankAccountNumber / ifscCode); blank until then.
+      asText(app.bankAccountNumber),
+      String(app.ifscCode || "").toUpperCase(),
       codeByCustomer[app.customerId] || "",
       istDate(app.reviewedAt),
       app.reviewNotes || "",
