@@ -1,6 +1,23 @@
+import { useState } from "react";
 import { useLoaderData, Form } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+
+const IST_OFFSET_MS = 330 * 60 * 1000;
+
+function istMonthKey(value) {
+  const d = new Date(new Date(value).getTime() + IST_OFFSET_MS);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(key) {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-IN", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 /*
  * Fetches fresh, current URLs for a batch of Shopify File IDs.
@@ -45,19 +62,12 @@ async function fetchFileUrls(admin, fileIds) {
   );
 
   const result = await response.json();
-
-  console.log(
-    "FILE STATUS CHECK:",
-    JSON.stringify(result?.data?.nodes, null, 2)
-  );
-
   const nodes = result?.data?.nodes || [];
 
   const map = {};
 
   nodes.forEach((node) => {
     if (!node) return;
-
     map[node.id] = node.url || node.image?.url || null;
   });
 
@@ -74,22 +84,6 @@ export const loader = async ({ request }) => {
     orderBy: { createdAt: "desc" },
   });
 
-  console.log(
-    "RAW APPLICATIONS FROM DB:",
-    JSON.stringify(
-      applications.map((a) => ({
-        id: a.id,
-        name: a.name,
-        status: a.status,
-        panFileId: a.panFileId,
-        aadhaarFileId: a.aadhaarFileId,
-        cancelledChequeFileId: a.cancelledChequeFileId,
-      })),
-      null,
-      2
-    )
-  );
-
   const fileIds = [];
 
   applications.forEach((application) => {
@@ -103,6 +97,7 @@ export const loader = async ({ request }) => {
 
   const applicationsWithUrls = applications.map((application) => ({
     ...application,
+    monthKey: istMonthKey(application.createdAt),
     panFileUrl: application.panFileId
       ? fileUrls[application.panFileId] || null
       : null,
@@ -114,9 +109,16 @@ export const loader = async ({ request }) => {
       : null,
   }));
 
+  // Months that actually have applications, newest first
+  const months = [...new Set(applicationsWithUrls.map((a) => a.monthKey))]
+    .sort()
+    .reverse()
+    .map((key) => ({ value: key, label: monthLabel(key) }));
+
   return {
     shop,
     applications: applicationsWithUrls,
+    months,
   };
 };
 
@@ -240,14 +242,141 @@ function statusTone(status) {
   return "warning";
 }
 
+/* -------------------------------- */
+/* KYC PACK DOWNLOAD */
+/* -------------------------------- */
+
+function KycPackDownload({ applications, months }) {
+  const [month, setMonth] = useState(months[0]?.value || "all");
+  const [status, setStatus] = useState("ALL");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const matching = applications.filter(
+    (a) =>
+      (month === "all" || a.monthKey === month) &&
+      (status === "ALL" || a.status === status)
+  ).length;
+
+  async function download() {
+    setBusy(true);
+    setMessage(null);
+
+    try {
+      // Embedded admin requests must carry the Shopify session token
+      const token = await window.shopify?.idToken?.();
+
+      const response = await fetch(
+        `/app/applications/export?month=${encodeURIComponent(month)}&status=${encodeURIComponent(status)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          response.status === 404 ? text : `Export failed (error ${response.status}).`
+        );
+      }
+
+      if (!(response.headers.get("content-type") || "").includes("zip")) {
+        throw new Error("Export failed — please reload the page and try again.");
+      }
+
+      const disposition = response.headers.get("content-disposition") || "";
+      const fileName =
+        disposition.match(/filename="([^"]+)"/)?.[1] || `JOYSHOP-KYC-${month}.zip`;
+
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+
+      setMessage({ type: "success", text: `Downloaded ${fileName}` });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message || "Export failed." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.title}>Download KYC pack</div>
+      <div style={styles.subtitle}>
+        One ZIP with a spreadsheet of everyone&rsquo;s details and a folder of
+        documents (PAN, Aadhaar, cancelled cheque) for each ambassador.
+      </div>
+
+      <div style={styles.row}>
+        <label style={styles.label}>
+          Month submitted
+          <select value={month} onChange={(e) => setMonth(e.target.value)} style={styles.select}>
+            {months.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+            <option value="all">All time</option>
+          </select>
+        </label>
+
+        <label style={styles.label}>
+          Status
+          <select value={status} onChange={(e) => setStatus(e.target.value)} style={styles.select}>
+            <option value="ALL">All</option>
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+          </select>
+        </label>
+
+        <button
+          type="button"
+          onClick={download}
+          disabled={busy || matching === 0}
+          style={busy || matching === 0 ? styles.buttonDisabled : styles.button}
+        >
+          {busy ? "Preparing ZIP…" : `⬇ Download (${matching})`}
+        </button>
+      </div>
+
+      {busy && (
+        <div style={styles.hint}>
+          Collecting documents from Shopify — this can take a little while for a busy month.
+        </div>
+      )}
+
+      {message && (
+        <div style={message.type === "success" ? styles.success : styles.error}>
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------- */
+/* PAGE */
+/* -------------------------------- */
+
 export default function Applications() {
-  const { applications } = useLoaderData();
+  const { applications, months } = useLoaderData();
 
   const pending = applications.filter((app) => app.status === "PENDING");
   const reviewed = applications.filter((app) => app.status !== "PENDING");
 
   return (
     <s-page heading="Ambassador Applications">
+
+      {applications.length > 0 && (
+        <s-section>
+          <KycPackDownload applications={applications} months={months} />
+        </s-section>
+      )}
 
       <s-section heading="Pending Review">
 
@@ -407,3 +536,81 @@ export default function Applications() {
     </s-page>
   );
 }
+
+/* -------------------------------- */
+/* STYLES */
+/* -------------------------------- */
+
+const styles = {
+  card: {
+    background: "#ffffff",
+    border: "1px solid #e4ebe6",
+    borderRadius: "12px",
+    padding: "18px 20px",
+  },
+  title: { fontSize: "16px", fontWeight: 700, color: "#17221b" },
+  subtitle: { marginTop: "4px", fontSize: "13px", color: "#6b7a70", lineHeight: 1.5 },
+  row: {
+    display: "flex",
+    alignItems: "flex-end",
+    flexWrap: "wrap",
+    gap: "12px",
+    marginTop: "14px",
+  },
+  label: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#4b5750",
+  },
+  select: {
+    height: "36px",
+    minWidth: "170px",
+    border: "1px solid #dce4df",
+    borderRadius: "8px",
+    padding: "0 10px",
+    background: "#fff",
+    fontSize: "13px",
+  },
+  button: {
+    height: "36px",
+    padding: "0 16px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#08783d",
+    color: "#fff",
+    fontSize: "13px",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  buttonDisabled: {
+    height: "36px",
+    padding: "0 16px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#aab8b0",
+    color: "#fff",
+    fontSize: "13px",
+    fontWeight: 700,
+    cursor: "not-allowed",
+  },
+  hint: { marginTop: "10px", fontSize: "12px", color: "#6b7a70" },
+  success: {
+    marginTop: "12px",
+    padding: "10px 14px",
+    borderRadius: "8px",
+    background: "#e5f7eb",
+    color: "#16803c",
+    fontSize: "13px",
+  },
+  error: {
+    marginTop: "12px",
+    padding: "10px 14px",
+    borderRadius: "8px",
+    background: "#fff5f5",
+    color: "#b42318",
+    fontSize: "13px",
+  },
+};
